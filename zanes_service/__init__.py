@@ -9,14 +9,30 @@ class ZanesService(Service):
     A service made by me, Zane.
     """
 
-    name = "Zanes_Service"
+    # Note: Using captial letters in 'name' somehow prevented CRITs
+    # from associating the HTML tab file(s) with this service, even
+    # when 'id' of the appropriate div was equal to 'name'.
+    name = "zanes_service"
     version = '1.0.0'
     supported_types = ['IP']
     template = 'zanes_service_template.html'
     description = "A service made by me, Zane. What it actually does I'm not sure."
+    NumberFields = ['Vendor', 'NumberOfTimes', 'TotalBPS', 'TotalPPS']
+
+    def _scan(self, obj):
+        pass
+
+    def stop(self):
+        pass
 
     def run(self, obj, config):
         pass
+        #sum = 0;
+        #for field in self.NumberFields:
+        #    if config[field]:
+        #        sum += config[field]
+        #self._add_result("Number", "dio", data={"Sum" : sum})
+
 
     @staticmethod
     def get_config(existing_config):
@@ -33,8 +49,7 @@ class ZanesService(Service):
 
     @staticmethod
     def parse_config(config):
-        if (not config['who_was_it']):
-            raise ServiceConfigError("who_was_it required.")
+        pass
 
     @staticmethod
     def get_config_details(config):
@@ -58,24 +73,19 @@ class ZanesService(Service):
 
     @classmethod
     def generate_runtime_form(self, analyst, config, crits_type, identifier):
-        if 'money' not in config:
-            config['money'] = 0;
+        #if 'money' not in config:
+        #    config['money'] = 0;
+
         html = render_to_string("services_run_form.html",
                                 {'name': self.name,
-                                 'form': forms.ZanesServiceRunForm(money_input=config['money']),
+                                 'form': forms.ZanesServiceRunForm(),#money_input=config['money']),
                                  'crits_type': crits_type,
                                  'identifier': identifier})
         return html
 
     @staticmethod
     def bind_runtime_form(analyst, config):
-        if 'money' not in config:
-            config['money'] = 0
-        elif isinstance(config['money'], list):
-            # 'money' field is usually given as a list with one item for some reason.
-            config['money'] = config['money'][0]
-        form = forms.ZanesServiceRunForm(data=config)
-        return form
+        return forms.ZanesServiceRunForm(data=config)
 
     # @staticmethod
     # def save_runtime_config(config):

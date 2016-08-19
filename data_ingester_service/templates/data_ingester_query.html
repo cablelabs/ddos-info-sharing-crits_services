@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Data Ingester Query{% endblock %}
+
+{% block content %}
+
+<div id="data_ingester_query" width="100%">
+
+    Oh, that's a webpage!
+
+    <span class="horizontal_menu">
+        <ul class="hmenu">
+            <li class="right" id="data_button">
+                <a href="#" id="get_service_data">Get Data</a>
+            </li>
+        </ul>
+    </span>
+
+    <div class='content_box content_details' style="width: 100%;">
+        <h3 class="titleheader" width="100%">
+            <span>Data</span>
+        </h3>
+        <div id="service_data" style="width:100%;max-height:300px;overflow:auto;"></div>
+    </div>
+</div>
+
+<script>
+function get_results() {
+    $.ajax({
+         type: "POST",
+         url: "{% url 'data_ingester_service.views.get_service_data' %}",
+         data: {},
+         success: function(data) {
+             $('#service_data').html('');
+             $('#service_data').append("Oh, you got it!");
+         }
+    });
+}
+
+$(document).ready(function() {
+    $(document).on('click', '#get_service_data', function(e) {
+        get_results();
+    });
+
+});
+</script>
+
+{% endblock %}

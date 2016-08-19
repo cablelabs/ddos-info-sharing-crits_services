@@ -28,23 +28,24 @@
 {% endfor %}
 {% regroup analysis.results by subtype as result_list %}
 {% for result_subtype in result_list %}
+    <h4>{{ result_subtype.grouper }}</h4>
+
     {% for result in result_subtype.list %}
+    {% if forloop.first %}
+
+    {% endif %}
+
     <tbody>
         <tr>
             <td>
-                Sum
+                {{ result.Key }}
             </td>
             <td>
-                {{ result.Sum }}
+                {{ result.result }}
             </td>
         </tr>
     </tbody>
     {% endfor %}
-{% empty %}
-{% if analysis.status == 'started' %}
-    <p> This service is still running. </p>
-{% else %}
-    <p> This service produced no results. </p>
-{% endif %}
+
 {% endfor %}
 </table>
