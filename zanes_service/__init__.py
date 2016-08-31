@@ -31,7 +31,7 @@ class ZanesService(Service):
         #for field in self.NumberFields:
         #    if config[field]:
         #        sum += config[field]
-        #self._add_result("Number", "dio", data={"Sum" : sum})
+        #self._add_result("Number", "Sum", data={"Sum" : sum})
 
 
     @staticmethod

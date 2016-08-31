@@ -1,34 +1,69 @@
-from django.core.urlresolvers import reverse
-
-from crits.campaigns.campaign import Campaign
-from crits.ips.ip import IP
 from crits.ips.handlers import ip_add_update
-from crits.campaigns.handlers import get_campaign_details
-from crits.core.crits_mongoengine import EmbeddedCampaign
-from crits.core.user_tools import user_sources
-from crits.core.class_mapper import class_from_type, class_from_id
 
-#from .__init__ import DataIngesterService
+import ipaddress
 
-def save_incoming_data(incoming_data):
 
-    analyst = incoming_data.get('analyst', None)
-    ip = incoming_data.get('ip', None)
-    name = incoming_data.get('source', None)
-    reference = incoming_data.get('reference', None)
-    method = incoming_data.get('method', None)
-    campaign = incoming_data.get('campaign', None)
-    confidence = incoming_data.get('confidence', None)
-    ip_type = incoming_data.get('ip_type', None)
-    add_indicator = incoming_data.get('add_indicator', False)
-    indicator_reference = incoming_data.get('indicator_reference', None)
-    misc = incoming_data.get('misc', None)
-    bucket_list = incoming_data.get('bucket_list', None)
-    ticket = incoming_data.get('ticket', None)
+def ip_address_type(ip):
+    """
+    Determines the IP version of the input IP address, and returns a respective identifier string.
+
+    :param ip: The IP address to analyze.
+    :type ip: string
+    :return: String indicating the version of the IP address. Is either 'IPv4 Address' or 'IPv6 Address'.
+    """
+
+    try:
+        ip_address = ipaddress.ip_address(ip)
+        if type(ip_address) == ipaddress.IPv4Address:
+            return 'IPv4 Address'
+        else:
+            return 'IPv6 Address'
+    except ValueError:
+        raise ValueError('IP is not a valid IPv4 or IPv6 address.')
+
+def add_or_update_ip_object(analyst, source, ip_object):
+    """
+    Adds or updates a single IP object to the database.
+
+    :param analyst: The analyst who sent the POST message for the IP object.
+    :type analyst: string
+    :param source: The source of the POST message for the IP object.
+    :type source: string
+    :param ip_objects: An IP object to add or update.
+    :type ip_objects: dict.
+    :returns: (nothing.)
+    """
+
+    ip = ip_object.get('IPaddress', None)
+    ip_type = ip_address_type(ip)
+    if not ip:
+        raise Exception('Must provide an IP, IP Type, and Source.')
+
+    reference = ip_object.get('reference', None)
+    method = ip_object.get('method', None)
+    campaign = ip_object.get('campaign', None)
+    confidence = ip_object.get('confidence', None)
+    add_indicator = ip_object.get('add_indicator', False)
+    indicator_reference = ip_object.get('indicator_reference', None)
+    misc = ip_object.get('misc', None)
+    bucket_list = ip_object.get('bucket_list', None)
+    ticket = ip_object.get('ticket', None)
+    alert_type = ip_object.get('AlertType', None)
+    asn = ip_object.get('ASN', None)
+    city = ip_object.get('City', None)
+    country = ip_object.get('Country', None)
+    first_seen = ip_object.get('FirstSeen', None)
+    last_seen = ip_object.get('LastSeen', None)
+    number_of_times = ip_object.get('NumberOfTimes', None)
+    state = ip_object.get('State', None)
+    total_bps = ip_object.get('TotalBPS', None)
+    total_pps = ip_object.get('TotalPPS', None)
+    attack_type = ip_object.get('Type', None)
+    vendor = ip_object.get('Vendor', None)
 
     result = ip_add_update(ip,
                            ip_type,
-                           source=name,
+                           source=source,
                            source_method=method,
                            source_reference=reference,
                            campaign=campaign,
@@ -38,17 +73,34 @@ def save_incoming_data(incoming_data):
                            ticket=ticket,
                            is_add_indicator=add_indicator,
                            indicator_reference=indicator_reference,
-                           misc=misc)
+                           misc=misc,
+                           alert_type=alert_type,
+                           asn=asn,
+                           city=city,
+                           country=country,
+                           first_seen=first_seen,
+                           last_seen=last_seen,
+                           number_of_times=number_of_times,
+                           state=state,
+                           total_bps=total_bps,
+                           total_pps=total_pps,
+                           attack_type=attack_type,
+                           vendor=vendor)
+    if not result['success']:
+        raise Exception('Failed to add/update IP object: ' + result.message)
 
-    # add fields that IP objects don't usually have
-    # ip_object = None
-    #cached_results = cache.get(form_consts.IP.CACHED_RESULTS)
+def add_or_update_ip_object_group(analyst, source, ip_objects):
+    """
+    Adds or updates multiple IP objects to the database.
 
-    #if cached_results != None:
-    #    ip_object = cached_results.get(ip_address)
-    #else:
-    #ip_object = IP.objects(ip=ip).first()
+    :param analyst: The analyst who sent the POST message for the IP objects.
+    :type analyst: string
+    :param source: The source of the POST message for the IP objects.
+    :type source: string
+    :param ip_objects: A group of IP objects to add or update.
+    :type ip_objects: A list of dicts.
+    :returns: (nothing.)
+    """
 
-
-
-    return
+    for ip_obj in ip_objects:
+        add_or_update_ip_object(analyst, source, ip_obj)
