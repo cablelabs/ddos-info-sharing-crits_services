@@ -23,14 +23,20 @@ class DataIngesterService(Service):
             self.WhoisLookup(obj.ip)
 
     def DNSLookup(self, ip, ip_type):
+        ip_numbers = ip.split('.')
+        # need to reverse the sections of the IP in order to make the correct request for this IP
+        ip_numbers.reverse()
+        reversed_ip = '.'.join(ip_numbers)
+
         start_time = time.time()
         if ip_type == 'IPv4 Address':
-            output = commands.getstatusoutput("dig +short " + ip + ".origin.asn.cymru.com TXT")
+            output = commands.getstatusoutput("dig +short " + reversed_ip + ".origin.asn.shadowserver.org TXT")
         else:
-            #TODO Figure out how to convert IPv6 address to 'nibble' format.
-            output = commands.getstatusoutput("dig +short " + ip + ".origin6.asn.cymru.com TXT")
+            #TODO Figure out how to convert IPv6 address to 'nibble' format. Also, not sure if Shadowserver URL similar.
+            output = commands.getstatusoutput("dig +short " + reversed_ip + ".origin6.asn.cymru.com TXT")
         asn = self.GetASNFromOutput(output)
         duration = time.time() - start_time
+
         data = {
             'ASN': asn,
             'Lookup_Time': duration
@@ -42,6 +48,24 @@ class DataIngesterService(Service):
         return asn.strip().replace("\"", "")  # remove extra characters
 
     def WhoisLookup(self, ip):
+        command_string = "whois -h asn.shadowserver.org origin " + ip
+
+        start_time = time.time()
+        output = commands.getstatusoutput(command_string)
+        duration = time.time() - start_time
+
+        asn = self.GetASNFromWhoisOutput(output)
+        data = {
+            'ASN': asn,
+            'Lookup_Time': duration
+        }
+        self._add_result('Whois Lookup', 'Whois Lookup', data=data)
+
+    def GetASNFromWhoisOutput(self, output):
+        asn = output[0].split("|", 1)[0] # ASN is the first value
+        return asn.strip()               # remove extra characters
+
+    def WhoisLookup_old(self, ip):
         start_time = time.time()
         obj = IPWhois(ip)
         result = obj.lookup()

@@ -21,6 +21,24 @@ def ip_address_type(ip):
     except ValueError:
         raise ValueError('IP is not a valid IPv4 or IPv6 address.')
 
+
+def add_or_update_ip_object_group(analyst, source, ip_objects):
+    """
+    Adds or updates multiple IP objects to the database.
+
+    :param analyst: The analyst who sent the POST message for the IP objects.
+    :type analyst: string
+    :param source: The source of the POST message for the IP objects.
+    :type source: string
+    :param ip_objects: A group of IP objects to add or update.
+    :type ip_objects: A list of dicts.
+    :returns: (nothing.)
+    """
+
+    for ip_obj in ip_objects:
+        add_or_update_ip_object(analyst, source, ip_obj)
+
+
 def add_or_update_ip_object(analyst, source, ip_object):
     """
     Adds or updates a single IP object to the database.
@@ -36,7 +54,7 @@ def add_or_update_ip_object(analyst, source, ip_object):
 
     ip = ip_object.get('IPaddress', None)
     ip_type = ip_address_type(ip)
-    if not ip:
+    if not ip or not ip_type:
         raise Exception('Must provide an IP, IP Type, and Source.')
 
     reference = ip_object.get('reference', None)
@@ -48,18 +66,20 @@ def add_or_update_ip_object(analyst, source, ip_object):
     misc = ip_object.get('misc', None)
     bucket_list = ip_object.get('bucket_list', None)
     ticket = ip_object.get('ticket', None)
-    alert_type = ip_object.get('AlertType', None)
-    asn = ip_object.get('ASN', None)
-    city = ip_object.get('City', None)
-    country = ip_object.get('Country', None)
+
+    # New IP object properties, arranged in the order they appear in our schema.
     first_seen = ip_object.get('FirstSeen', None)
     last_seen = ip_object.get('LastSeen', None)
     number_of_times = ip_object.get('NumberOfTimes', None)
+    city = ip_object.get('City', None)
     state = ip_object.get('State', None)
+    country = ip_object.get('Country', None)
     total_bps = ip_object.get('TotalBPS', None)
     total_pps = ip_object.get('TotalPPS', None)
-    attack_type = ip_object.get('Type', None)
-    vendor = ip_object.get('Vendor', None)
+    # TODO: is this the ASN we want?
+    asn = ip_object.get('SourceASN', None)
+    attack_type = ip_object.get('AttackType', None)
+    alert_type = ip_object.get('AlertType', None)
 
     result = ip_add_update(ip,
                            ip_type,
@@ -84,23 +104,6 @@ def add_or_update_ip_object(analyst, source, ip_object):
                            state=state,
                            total_bps=total_bps,
                            total_pps=total_pps,
-                           attack_type=attack_type,
-                           vendor=vendor)
+                           attack_type=attack_type)
     if not result['success']:
         raise Exception('Failed to add/update IP object: ' + result.message)
-
-def add_or_update_ip_object_group(analyst, source, ip_objects):
-    """
-    Adds or updates multiple IP objects to the database.
-
-    :param analyst: The analyst who sent the POST message for the IP objects.
-    :type analyst: string
-    :param source: The source of the POST message for the IP objects.
-    :type source: string
-    :param ip_objects: A group of IP objects to add or update.
-    :type ip_objects: A list of dicts.
-    :returns: (nothing.)
-    """
-
-    for ip_obj in ip_objects:
-        add_or_update_ip_object(analyst, source, ip_obj)

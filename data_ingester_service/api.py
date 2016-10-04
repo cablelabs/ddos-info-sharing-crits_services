@@ -5,6 +5,7 @@ from tastypie.authentication import MultiAuthentication
 from crits.core.api import CRITsApiKeyAuthentication, CRITsSessionAuthentication
 from crits.core.api import CRITsSerializer, CRITsAPIResource
 from crits.core.crits_mongoengine import CritsDocument
+from crits.core.user_tools import user_sources
 from handlers import add_or_update_ip_object_group
 
 
@@ -40,20 +41,50 @@ class DataIngesterResource(CRITsAPIResource):
         :returns: (nothing.)
         """
 
+        response = {
+            'return_code': 1,
+            'message': "Error!"
+        }
+
         analyst = bundle.request.user.username
-        source = bundle.data.get('source')
-        ip_objects = bundle.data.get('new_entries', None)
+        try:
+            source = bundle.data.get('ProviderName')
+        except Exception:
+            response['message'] = "Error: 'ProviderName' missing."
+            self.crits_response(response)
+            return
+
+        try:
+            sources = user_sources(analyst)
+        except Exception:
+            response['message'] = "Error: Problem getting user sources."
+            self.crits_response(response)
+            return
+
+        if source not in sources:
+            response['message'] = "Error: User not allowed to publish to source '" + str(source) + "'."
+            self.crits_response(response)
+            return
+
+        try:
+            ip_objects = bundle.data.get('dis-data', None)
+        except Exception:
+            response['message'] = "Error: 'dis-data' missing."
+            self.crits_response(response)
+            return
+
+        if ip_objects is None:
+            response['message'] = "Error: 'dis-data' missing."
+            self.crits_response(response)
+            return
+
         try:
             add_or_update_ip_object_group(analyst, source, ip_objects)
         except Exception, error:
-            response = {
-                'return_code': 1,
-                'message': 'Error while saving data: ' + error.message
-            }
+            response['message'] = 'Error while saving IP data: ' + error.message + '.'
             self.crits_response(response)
+            return
 
-        response = {
-            'return_code': 0,
-            'message': 'All data has been saved!'
-        }
+        response['return_code'] = 1
+        response['message'] = 'All data has been saved!'
         self.crits_response(response)
