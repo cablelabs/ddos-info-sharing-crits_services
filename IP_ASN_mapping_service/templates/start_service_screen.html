@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}ASN Lookup Service{% endblock %}
+
+{% block content %}
+
+<div id="IP_ASN_start_service" width="100%">
+
+    Find the ASN associated with a particular IP.
+
+    <span class="horizontal_menu">
+        <ul class="hmenu">
+            <li class="right" id="data_button">
+                <a href="#" id="start_service">Start Service</a>
+            </li>
+        </ul>
+    </span>
+
+    <div class="content_box content_details" style="width: 100%;">
+        <h3 class="titleheader" width="100%">
+            <span>Data</span>
+        </h3>
+        <div id="service_data" style="width:100%;max-height:300px;overflow:auto;"></div>
+    </div>
+
+</div>
+
+<script>
+function get_results() {
+    $.ajax({
+         type: "POST",
+         url: "{% url 'IP_ASN_mapping_service.views.start_service' %}",
+         data: {},
+         success: function(data) {
+             $('#service_data').html('');
+             $('#service_data').append(data.is_processing_data);
+         }
+    });
+}
+
+$(document).ready(function() {
+    $(document).on('click', '#start_service', function(e) {
+        get_results();
+    });
+
+});
+</script>
+
+{% endblock %}

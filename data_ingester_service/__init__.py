@@ -15,8 +15,23 @@ class DataIngesterService(Service):
     supported_types = ['IP']
     description = "A service that receives data from MSOs through POST messages."
 
+    def __init(self):
+        Service.__init__(self)
+        number = 0
+        while number < 10:
+            print(number)
+            number += 1
+            if number >= 10:
+                number = 0
+
     def run(self, obj, config):
         LookupType = config['LookupType']
+        number = 0
+        while number < 100:
+            print(number)
+            number += 1
+            if number >= 100:
+                number = 0
         if LookupType == 'DNS':
             self.DNSLookup(obj.ip, obj.ip_type)
         else: # Whois
