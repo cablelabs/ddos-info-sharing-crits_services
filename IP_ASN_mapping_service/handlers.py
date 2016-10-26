@@ -51,7 +51,7 @@ def process_from_oplog():
     client = pymongo.MongoClient()
     oplog = client.local.oplog.rs
     first_entry = oplog.find().sort('ts', pymongo.ASCENDING).limit(1).next()
-    timestamp = Timestamp(1476479785, 2) #first_entry['ts']
+    timestamp = first_entry['ts']
 
     while True:
         cursor = oplog.find({'ts': {'$gt': timestamp},
@@ -159,6 +159,7 @@ def GetASNFromOutput(output):
     asn = output[1].split("|", 1)[0]  # ASN is the first value
     return asn.strip().replace("\"", "")  # remove extra characters
 
+# CURRENTLY NOT USED
 def WhoisLookup(ip):
     command_string = "whois -h asn.shadowserver.org origin " + ip
 
@@ -173,6 +174,7 @@ def GetASNFromWhoisOutput( output):
     asn = output[0].split("|", 1)[0]  # ASN is the first value
     return asn.strip()
 
+# CURRENTLY NOT USED
 # audit_log not tailable because it isn't a capped collection
 def process_from_audit_log():
     client = pymongo.MongoClient()
