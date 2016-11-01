@@ -11,6 +11,8 @@ from crits.ips.ip import IP
 from crits.comments.comment import Comment
 from crits.comments.views import add_update_comment
 from crits.core.crits_mongoengine import create_embedded_source, json_handler
+from crits.core.handlers import add_releasability, add_releasability_instance
+from crits.core.source_access import SourceAccess
 from crits.core.user_tools import get_user_organization, user_sources
 from crits.core.user import CRITsUser
 from crits.vocabulary.objects import ObjectTypes
@@ -51,7 +53,7 @@ def process_from_oplog():
     client = pymongo.MongoClient()
     oplog = client.local.oplog.rs
     first_entry = oplog.find().sort('ts', pymongo.ASCENDING).limit(1).next()
-    timestamp = first_entry['ts']
+    timestamp = Timestamp(1477956427, 1) #first_entry['ts']
 
     while True:
         cursor = oplog.find({'ts': {'$gt': timestamp},
@@ -66,40 +68,61 @@ def process_from_oplog():
                 username = doc['o']['user']
                 object_id = doc['o']['target_id']
                 ip_object = IP.objects(id=object_id).first()
-                if ip_object:
-                    check_ip_object_asn(username, ip_object)
+                if ip_object and ip_object.status != 'Analyzed':
+                    if not check_and_update_ip_object_asn(ip_object, username):
+                        add_flag_comment_to_ip(ip_object, username)
+                    add_additional_sources(ip_object, username)
+                    ip_object.set_status('Analyzed')
+                    # potential looping problem because this will add another entry to the audit_log
+                    ip_object.save(username=username)
             time.sleep(1)
 
-def check_ip_object_asn(username, ip_object):
-    if ip_object.status == 'Analyzed':
-        # already analyzed this IP object
-        return
+# True iff an update was not required
+def check_and_update_ip_object_asn(ip_object, username):
     arriving_asn = ip_object.asn
     ip_address = ip_object.ip
     correct_asn = DNSLookup(ip_address, 'IPv4 Address')
     if arriving_asn != correct_asn:
-        ip_object.asn = correct_asn
+        update_ip_object_asn(ip_object, correct_asn, username)
+        return False
+    return True
 
-        # remove old ASN Object(s)
-        for o in ip_object.obj:
-            if o.object_type == ObjectTypes.AS_NUMBER:
-                ip_object.remove_object(ObjectTypes.AS_NUMBER, o.value)
+def DNSLookup(ip, ip_type):
+    ip_numbers = ip.split('.')
+    # need to reverse the sections of the IP in order to make the correct request for this IP
+    ip_numbers.reverse()
+    reversed_ip = '.'.join(ip_numbers)
+    if ip_type == 'IPv4 Address':
+        output = commands.getstatusoutput("dig +short " + reversed_ip + ".origin.asn.shadowserver.org TXT")
+    else:
+        # TODO Figure out how to convert IPv6 address to 'nibble' format. Also, not sure if Shadowserver URL similar.
+        output = commands.getstatusoutput("dig +short " + reversed_ip + ".origin6.asn.cymru.com TXT")
+    asn = GetASNFromOutput(output)
+    return asn
 
-        # add new ASN Object(s)
-        for s in ip_object.source:
-            ip_object.add_object(ObjectTypes.AS_NUMBER, correct_asn, s.name, '', '', username)
-        add_flag_comment_to_ip(ip_object.id, username)
-    ip_object.set_status('Analyzed')
-    # potential looping problem because this will add another entry to the audit_log
-    ip_object.save(username=username)
+def GetASNFromOutput(output):
+    asn = output[1].split("|", 1)[0]  # ASN is the first value
+    return asn.strip().replace("\"", "")  # remove extra characters
+
+def update_ip_object_asn(ip_object, asn, username):
+    ip_object.asn = asn
+
+    # remove old ASN Object(s)
+    for o in ip_object.obj:
+        if o.object_type == ObjectTypes.AS_NUMBER:
+            ip_object.remove_object(ObjectTypes.AS_NUMBER, o.value)
+
+    # add new ASN Object(s)
+    for s in ip_object.source:
+        ip_object.add_object(ObjectTypes.AS_NUMBER, asn, s.name, '', '', username)
 
 # based on comment_add() in crits/crits/comments/handlers.py
-def add_flag_comment_to_ip(obj_id, analyst):
+def add_flag_comment_to_ip(ip_object, analyst):
     """
     Add a new comment indicating the ASN was wrong.
 
-    :param obj_id: The top-level ObjectId to add the comment to.
-    :type obj_id: str
+    :param ip_object: The top-level IP object to add the comment to.
+    :type ip_object: IP
     :param analyst: The user adding the comment.
     :type analyst: str
     :returns: Nothing
@@ -108,7 +131,7 @@ def add_flag_comment_to_ip(obj_id, analyst):
     comment = Comment()
     comment.comment = "Error: Incorrect ASN given to IP. Corrected by analysis."
     comment.parse_comment()
-    comment.set_parent_object('IP', obj_id)
+    comment.set_parent_object('IP', ip_object.id)
     comment.analyst = analyst
     #TODO: Is this line necessary?
     #comment.set_url_key(cleaned_data['url_key'])
@@ -123,6 +146,39 @@ def add_flag_comment_to_ip(obj_id, analyst):
     # to compare creation and edit times.
     comment.reload()
     comment.comment_to_html()
+
+def add_additional_sources(ip_object, username):
+    try:
+        asn = int(ip_object.asn)
+    except ValueError:
+        return
+    is_asn_in_sources = False
+    for src in ip_object.source:
+        source_objects = SourceAccess.objects().filter(name=src.name)
+        for src_obj in source_objects:
+            if asn in src_obj.asns:
+                is_asn_in_sources = True
+                break
+    if not is_asn_in_sources:
+        source = asn_to_source_name(asn)
+        if source:
+            source = [create_embedded_source(source,
+                                             reference=None,
+                                             method=None,
+                                             analyst=username)]
+            if source:
+                for s in source:
+                    ip_object.add_source(s)
+                    add_releasability('IP', ip_object.id, s.name, username)
+                    add_releasability_instance('IP', ip_object.id, s.name, username)
+
+def asn_to_source_name(asn):
+    sources = SourceAccess.objects()
+    for src in sources:
+        if asn in src.asns:
+            return src.name
+
+
 
 # CURRENTLY NOT USED
 def notify_user_incorrect_asn(username):
@@ -139,25 +195,6 @@ def notify_user_incorrect_asn(username):
         s = smtplib.SMTP('localhost')
         s.sendmail(from_email, [to_email], msg.as_string())
         s.quit()
-
-def DNSLookup(ip, ip_type):
-    ip_numbers = ip.split('.')
-    # need to reverse the sections of the IP in order to make the correct request for this IP
-    ip_numbers.reverse()
-    reversed_ip = '.'.join(ip_numbers)
-
-    start_time = time.time()
-    if ip_type == 'IPv4 Address':
-        output = commands.getstatusoutput("dig +short " + reversed_ip + ".origin.asn.shadowserver.org TXT")
-    else:
-        # TODO Figure out how to convert IPv6 address to 'nibble' format. Also, not sure if Shadowserver URL similar.
-        output = commands.getstatusoutput("dig +short " + reversed_ip + ".origin6.asn.cymru.com TXT")
-    asn = GetASNFromOutput(output)
-    return asn
-
-def GetASNFromOutput(output):
-    asn = output[1].split("|", 1)[0]  # ASN is the first value
-    return asn.strip().replace("\"", "")  # remove extra characters
 
 # CURRENTLY NOT USED
 def WhoisLookup(ip):

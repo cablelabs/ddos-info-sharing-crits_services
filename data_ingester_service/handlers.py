@@ -57,8 +57,8 @@ def add_or_update_ip_object(analyst, source, ip_object):
     if not ip or not ip_type:
         raise Exception('Must provide an IP, IP Type, and Source.')
 
-    reference = ip_object.get('reference', None)
     method = ip_object.get('method', None)
+    reference = ip_object.get('reference', None)
     campaign = ip_object.get('campaign', None)
     confidence = ip_object.get('confidence', None)
     add_indicator = ip_object.get('add_indicator', False)
@@ -76,7 +76,6 @@ def add_or_update_ip_object(analyst, source, ip_object):
     country = ip_object.get('Country', None)
     total_bps = ip_object.get('TotalBPS', None)
     total_pps = ip_object.get('TotalPPS', None)
-    # TODO: is this the ASN we want?
     asn = ip_object.get('SourceASN', None)
     attack_type = ip_object.get('AttackType', None)
     alert_type = ip_object.get('AlertType', None)

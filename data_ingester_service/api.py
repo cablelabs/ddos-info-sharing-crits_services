@@ -50,39 +50,41 @@ class DataIngesterResource(CRITsAPIResource):
         try:
             source = bundle.data.get('ProviderName')
         except Exception:
+            response['message'] = "Error: Problem getting 'dis-data' field."
+            self.crits_response(response, status=500)
+            return
+        if source is None:
             response['message'] = "Error: 'ProviderName' missing."
-            self.crits_response(response)
+            self.crits_response(response, status=400)
             return
 
         try:
             sources = user_sources(analyst)
         except Exception:
             response['message'] = "Error: Problem getting user sources."
-            self.crits_response(response)
+            self.crits_response(response, status=500)
             return
-
         if source not in sources:
             response['message'] = "Error: User not allowed to publish to source '" + str(source) + "'."
-            self.crits_response(response)
+            self.crits_response(response, status=403)
             return
 
         try:
             ip_objects = bundle.data.get('dis-data', None)
         except Exception:
-            response['message'] = "Error: 'dis-data' missing."
-            self.crits_response(response)
+            response['message'] = "Error: Problem getting 'dis-data' field."
+            self.crits_response(response, status=500)
             return
-
         if ip_objects is None:
             response['message'] = "Error: 'dis-data' missing."
-            self.crits_response(response)
+            self.crits_response(response, status=400)
             return
 
         try:
             add_or_update_ip_object_group(analyst, source, ip_objects)
         except Exception, error:
             response['message'] = 'Error while saving IP data: ' + error.message + '.'
-            self.crits_response(response)
+            self.crits_response(response, status=500)
             return
 
         response['return_code'] = 1
