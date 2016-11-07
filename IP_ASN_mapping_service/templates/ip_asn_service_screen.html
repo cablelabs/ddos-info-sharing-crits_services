@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}IP to ASN Mapping Service{% endblock %}
+
+{% block content %}
+
+<div id="IP_ASN_start_service" width="100%">
+
+    <div>
+        <h1>IP to ASN Mapping Service</h1>
+    </div>
+
+    <div>
+        This service runs in the background and sets the ASN value for each IP object.
+        While the service is running, it will look up the ASN value for each incoming IP object to see if the ASN value given with the data is correct.
+        If it is not correct, the service will set the ASN to the correct value, and will leave a comment on the IP object indicating that a correction occurred.
+    </div>
+    <br>
+    <div>
+        Click the button below to start or stop the service from processing. The service will process data as long as the status is 'Running'.
+    </div>
+
+    <span class="horizontal_menu">
+        <ul class="hmenu">
+            <li class="right" id="data_button">
+                <a href="#" id="start_stop_service">Start/Stop Service</a>
+            </li>
+        </ul>
+    </span>
+
+    <div class="content_box content_details" style="width: 100%;">
+        <h3 width="100%">
+            <span style="margin-left: 10px">Process Status:</span>
+            <span id="process_status">{{process_status}}</span>
+        </h3>
+    </div>
+
+</div>
+
+<script>
+$(document).ready(function() {
+    $(document).on('click', '#start_stop_service', function(e) {
+        get_results();
+    });
+});
+
+function get_results() {
+    $.ajax({
+        type: "POST",
+        url: "{% url 'IP_ASN_mapping_service.views.start_or_stop_service' %}",
+        data: {},
+        success: function(data) {
+            $('#process_status').html('');
+            $('#process_status').append(data.process_status);
+        }
+    });
+}
+</script>
+
+{% endblock %}

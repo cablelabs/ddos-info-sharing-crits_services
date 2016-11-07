@@ -23,7 +23,7 @@ process = None
 # constants
 use_oplog = True
 
-def start_service():
+def start_or_stop_service():
     global process
     if process is None:
         process = Process(target=process_data, args=())
@@ -36,12 +36,19 @@ def start_service():
         process.join()
         process = None
 
-    is_processing_data = (process is not None)
-
-    # Wrap 'is_processing_data' with str() because otherwise it doesn't appear in UI when false.
+    # Wrap 'is_process_running()' with str() because otherwise it doesn't appear in UI when false.
     return {'success': True,
             'html': '',
-            'is_processing_data': str(is_processing_data)}
+            'process_status': process_status()}
+
+def process_status():
+    """
+    Returns 'Running" if process is running, and 'Stopped' otherwise.
+    :return: 'Running' or 'Stopped'
+    """
+    if (process is not None):
+        return 'Running'
+    return 'Stopped'
 
 def process_data():
     if use_oplog:

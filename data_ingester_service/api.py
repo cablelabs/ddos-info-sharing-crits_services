@@ -1,4 +1,4 @@
-from mongoengine import Document
+from mongoengine import Document, StringField, ListField, DynamicField, DictField
 from tastypie import authorization
 from tastypie.authentication import MultiAuthentication
 
@@ -14,6 +14,10 @@ class DataIngesterObject(CritsDocument, Document):
     Class to store data if necessary in future work.
     """
 
+    #nodes = ListField(DynamicField(DictField))
+    #links = ListField(DynamicField(DictField))
+    hey = StringField()
+
 class DataIngesterResource(CRITsAPIResource):
     """
     Class to handle everything related to the Data Ingester API.
@@ -23,12 +27,27 @@ class DataIngesterResource(CRITsAPIResource):
 
     class Meta:
         object_class = DataIngesterObject
-        allowed_methods = ('post')
+        allowed_methods = ('get', 'post')
         resource_name = "data_ingester_resource"
         authentication = MultiAuthentication(CRITsApiKeyAuthentication(),
                                              CRITsSessionAuthentication())
         authorization = authorization.Authorization()
         serializer = CRITsSerializer()
+
+    def obj_get_list(self, request=None, **kwargs):
+        """
+        Handles GET requests and returns a list of data
+
+        :param request:
+        :param kwargs:
+        :return: List of objects
+        """
+        obj = DataIngesterObject()
+        obj.hey = "yeah?"
+        return [obj]
+
+    def get_object_list(self, request, klass, sources=True):
+        return 0
 
     def obj_create(self, bundle, **kwargs):
         """
