@@ -16,6 +16,7 @@ from crits.core.source_access import SourceAccess
 from crits.core.user_tools import get_user_organization, user_sources
 from crits.core.user import CRITsUser
 from crits.vocabulary.objects import ObjectTypes
+from crits.vocabulary.status import Status
 
 # global variables
 process = None
@@ -30,7 +31,8 @@ def start_or_stop_service():
         process.start()
     else:
         try:
-            os.kill(process.pid, signal.SIGKILL)
+            pid = process.pid
+            os.kill(pid, signal.SIGKILL)
         except OSError:
             pass
         process.join()
@@ -54,6 +56,7 @@ def process_data():
     if use_oplog:
         process_from_oplog()
     process_from_audit_log()
+    return
 
 # oplog is capped collection, so it can be tailed
 def process_from_oplog():
@@ -75,14 +78,15 @@ def process_from_oplog():
                 username = doc['o']['user']
                 object_id = doc['o']['target_id']
                 ip_object = IP.objects(id=object_id).first()
-                if ip_object and ip_object.status != 'Analyzed':
+                if ip_object and ip_object.status != Status.ANALYZED:
                     if not check_and_update_ip_object_asn(ip_object, username):
                         add_flag_comment_to_ip(ip_object, username)
                     add_additional_sources(ip_object, username)
-                    ip_object.set_status('Analyzed')
+                    ip_object.set_status(Status.ANALYZED)
                     # potential looping problem because this will add another entry to the audit_log
                     ip_object.save(username=username)
             time.sleep(1)
+    return
 
 # True iff an update was not required
 def check_and_update_ip_object_asn(ip_object, username):
@@ -114,14 +118,20 @@ def GetASNFromOutput(output):
 def update_ip_object_asn(ip_object, asn, username):
     ip_object.asn = asn
 
-    # remove old ASN Object(s)
+    # Remove old AS Number object(s)
+
+    # To prevent skipping objects in ip_object.obj due to removing objects, store list of ASNs to remove.
+    asn_values = []
     for o in ip_object.obj:
         if o.object_type == ObjectTypes.AS_NUMBER:
-            ip_object.remove_object(ObjectTypes.AS_NUMBER, o.value)
+            asn_values.append(o.value)
+    for asn_value in asn_values:
+        ip_object.remove_object(ObjectTypes.AS_NUMBER, asn_value)
 
-    # add new ASN Object(s)
+    # add new AS Number object
     for s in ip_object.source:
         ip_object.add_object(ObjectTypes.AS_NUMBER, asn, s.name, '', '', username)
+    return
 
 # based on comment_add() in crits/crits/comments/handlers.py
 def add_flag_comment_to_ip(ip_object, analyst):
@@ -153,6 +163,7 @@ def add_flag_comment_to_ip(ip_object, analyst):
     # to compare creation and edit times.
     comment.reload()
     comment.comment_to_html()
+    return
 
 def add_additional_sources(ip_object, username):
     try:
