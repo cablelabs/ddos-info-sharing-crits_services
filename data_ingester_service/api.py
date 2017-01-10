@@ -6,17 +6,18 @@ from crits.core.api import CRITsApiKeyAuthentication, CRITsSessionAuthentication
 from crits.core.api import CRITsSerializer, CRITsAPIResource
 from crits.core.crits_mongoengine import CritsDocument
 from crits.core.user_tools import user_sources
+from crits.ips.ip import IP
+from crits.vocabulary.objects import ObjectTypes
+
 from handlers import add_or_update_ip_object_group
 
 
 class DataIngesterObject(CritsDocument, Document):
     """
-    Class to store data if necessary in future work.
+    Class to store data if we ever decide to make this support GET
     """
-
-    #nodes = ListField(DynamicField(DictField))
-    #links = ListField(DynamicField(DictField))
-    hey = StringField()
+    provider_name = StringField()
+    dis_data = DictField()
 
 class DataIngesterResource(CRITsAPIResource):
     """
@@ -42,12 +43,38 @@ class DataIngesterResource(CRITsAPIResource):
         :param kwargs:
         :return: List of objects
         """
+        ip_object = IP.objects().first()
         obj = DataIngesterObject()
-        obj.hey = "yeah?"
-        return [obj]
+        for s in ip_object.source:
+            obj.provider_name = str(s.name)
 
-    def get_object_list(self, request, klass, sources=True):
-        return 0
+        obj.dis_data['IPaddress'] = ip_object.ip
+
+        for o in ip_object.obj:
+            if o.object_type == ObjectTypes.AS_NUMBER:
+                obj.dis_data['SourceASN'] = o.value
+            elif o.object_type == ObjectTypes.ALERT_TYPE:
+                obj.dis_data['AlertType'] = o.value
+            elif o.object_type == ObjectTypes.ATTACK_TYPE:
+                obj.dis_data['AttackType'] = o.value
+            elif o.object_type == ObjectTypes.CITY:
+                obj.dis_data['City'] = o.value
+            elif o.object_type == ObjectTypes.COUNTRY:
+                obj.dis_data['Country'] = o.value
+            elif o.object_type == ObjectTypes.NUMBER_OF_TIMES_SEEN:
+                obj.dis_data['NumberOfTimes'] = o.value
+            elif o.object_type == ObjectTypes.STATE:
+                obj.dis_data['State'] = o.value
+            elif o.object_type == ObjectTypes.TIME_FIRST_SEEN:
+                obj.dis_data['FirstSeen'] = o.value
+            elif o.object_type == ObjectTypes.TIME_LAST_SEEN:
+                obj.dis_data['LastSeen'] = o.value
+            elif o.object_type == ObjectTypes.TOTAL_BYTES_PER_SECOND:
+                obj.dis_data['TotalBPS'] = o.value
+            elif o.object_type == ObjectTypes.TOTAL_PACKETS_PER_SECOND:
+                obj.dis_data['TotalPPS'] = o.value
+
+        return [obj]
 
     def obj_create(self, bundle, **kwargs):
         """
@@ -61,8 +88,8 @@ class DataIngesterResource(CRITsAPIResource):
         """
 
         response = {
-            'return_code': 1,
-            'message': "Error!"
+            'message': "Error!",
+            'return_code': 1
         }
 
         analyst = bundle.request.user.username
@@ -102,10 +129,10 @@ class DataIngesterResource(CRITsAPIResource):
         try:
             add_or_update_ip_object_group(analyst, source, ip_objects)
         except Exception, error:
-            response['message'] = 'Error while saving IP data: ' + error.message + '.'
+            response['message'] = 'Error while saving IP data: ' + error.message
             self.crits_response(response, status=500)
             return
 
-        response['return_code'] = 1
         response['message'] = 'All data has been saved!'
+        response['return_code'] = 0
         self.crits_response(response)

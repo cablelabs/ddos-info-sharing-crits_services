@@ -1,4 +1,5 @@
 from crits.ips.handlers import ip_add_update
+from pymongo import MongoClient
 
 import ipaddress
 
@@ -63,7 +64,6 @@ def add_or_update_ip_object(analyst, source, ip_object):
     confidence = ip_object.get('confidence', None)
     add_indicator = ip_object.get('add_indicator', False)
     indicator_reference = ip_object.get('indicator_reference', None)
-    misc = ip_object.get('misc', None)
     bucket_list = ip_object.get('bucket_list', None)
     ticket = ip_object.get('ticket', None)
 
@@ -76,33 +76,68 @@ def add_or_update_ip_object(analyst, source, ip_object):
     country = ip_object.get('Country', None)
     total_bps = ip_object.get('TotalBPS', None)
     total_pps = ip_object.get('TotalPPS', None)
-    asn = ip_object.get('SourceASN', None)
+    as_number = ip_object.get('SourceASN', None)
     attack_type = ip_object.get('AttackType', None)
     alert_type = ip_object.get('AlertType', None)
 
-    result = ip_add_update(ip,
-                           ip_type,
-                           source=source,
-                           source_method=method,
-                           source_reference=reference,
-                           campaign=campaign,
-                           confidence=confidence,
-                           analyst=analyst,
-                           bucket_list=bucket_list,
-                           ticket=ticket,
-                           is_add_indicator=add_indicator,
-                           indicator_reference=indicator_reference,
-                           misc=misc,
-                           alert_type=alert_type,
-                           asn=asn,
-                           city=city,
-                           country=country,
-                           first_seen=first_seen,
-                           last_seen=last_seen,
-                           number_of_times=number_of_times,
-                           state=state,
-                           total_bps=total_bps,
-                           total_pps=total_pps,
-                           attack_type=attack_type)
-    if not result['success']:
-        raise Exception('Failed to add/update IP object: ' + result.message)
+    add_to_original_ip_collection = True
+
+    if add_to_original_ip_collection:
+        result = ip_add_update(ip,
+                               ip_type,
+                               source=source,
+                               source_method=method,
+                               source_reference=reference,
+                               campaign=campaign,
+                               confidence=confidence,
+                               analyst=analyst,
+                               bucket_list=bucket_list,
+                               ticket=ticket,
+                               is_add_indicator=add_indicator,
+                               indicator_reference=indicator_reference,
+                               alert_type=alert_type,
+                               as_number=as_number,
+                               attack_type=attack_type,
+                               city=city,
+                               country=country,
+                               first_seen=first_seen,
+                               last_seen=last_seen,
+                               number_of_times=number_of_times,
+                               state=state,
+                               total_bps=total_bps,
+                               total_pps=total_pps)
+        if not result['success']:
+            raise Exception('Failed to add/update IP object: ' + result.message)
+        return
+
+    # add object to separate collection outside of CRITs database
+    try:
+        client = MongoClient('localhost', 27017)
+        db = client.data_ingest_ip_info
+        collection = db.ips
+        ip_data = {
+            "ip": ip,
+            "ip_type": ip_type,
+            "method": method,
+            "reference": reference,
+            "campaign": campaign,
+            "confidence": confidence,
+            "add_indicator": add_indicator,
+            "indicator_reference": indicator_reference,
+            "bucket_list": bucket_list,
+            "ticket": ticket,
+            "first_seen": first_seen,
+            "last_seen": last_seen,
+            "number_of_times": number_of_times,
+            "city": city,
+            "state": state,
+            "country": country,
+            "total_bps": total_bps,
+            "total_pps": total_pps,
+            "as_number": as_number,
+            "attack_type": attack_type,
+            "alert_type": alert_type
+        }
+        collection.insert(ip_data)
+    except Exception as e:
+        raise Exception("Failed to add/update DDoS IP object: " + str(e))

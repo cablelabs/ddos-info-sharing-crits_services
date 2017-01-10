@@ -29,6 +29,7 @@ def start_or_stop_service():
     if process is None:
         process = Process(target=process_data, args=())
         process.start()
+        print "Started new process with PID: " + str(process.pid) + "."
     else:
         try:
             pid = process.pid
@@ -55,6 +56,7 @@ def process_status():
 def process_data():
     if use_oplog:
         process_from_oplog()
+        return
     process_from_audit_log()
     return
 
@@ -62,43 +64,61 @@ def process_data():
 def process_from_oplog():
     client = pymongo.MongoClient()
     oplog = client.local.oplog.rs
-    first_entry = oplog.find().sort('ts', pymongo.ASCENDING).limit(1).next()
-    timestamp = Timestamp(1477956427, 1) #first_entry['ts']
+    #first_entry = oplog.find().sort('ts', pymongo.ASCENDING).limit(1).next()
+    timestamp = Timestamp(1482178094, 1) #first_entry['ts']
 
     while True:
-        cursor = oplog.find({'ts': {'$gt': timestamp},
-                             'ns': 'crits.audit_log',
-                             'o.type': 'IP'},
-                            tailable=True,
-                            await_data=True)
-        cursor.add_option(8)
-        while cursor.alive:
-            for doc in cursor:
-                timestamp = doc['ts']
-                username = doc['o']['user']
-                object_id = doc['o']['target_id']
-                ip_object = IP.objects(id=object_id).first()
-                if ip_object and ip_object.status != Status.ANALYZED:
-                    if not check_and_update_ip_object_asn(ip_object, username):
-                        add_flag_comment_to_ip(ip_object, username)
-                    add_additional_sources(ip_object, username)
-                    ip_object.set_status(Status.ANALYZED)
-                    # potential looping problem because this will add another entry to the audit_log
-                    ip_object.save(username=username)
-            time.sleep(1)
+        try:
+            cursor = oplog.find({'ts': {'$gt': timestamp},
+                                 'ns': 'crits.audit_log',
+                                 'o.type': 'IP'},
+                                tailable=True,
+                                await_data=True)
+            cursor.add_option(8)
+            while cursor.alive:
+                for doc in cursor:
+                    timestamp = doc['ts']
+                    username = doc['o']['user']
+                    object_id = doc['o']['target_id']
+                    ip_object = IP.objects(id=object_id).first()
+                    if ip_object and ip_object.status != Status.ANALYZED:
+                        check_and_update_ip_object_asn(ip_object, username)
+                        add_additional_sources(ip_object, username)
+                        ip_object.set_status(Status.ANALYZED)
+                        #if is_asn_updated or is_added_sources:
+                        # potential looping problem because this will add another entry to the audit_log
+                        ip_object.save(username=username)
+                time.sleep(1)
+        except:
+            continue
     return
 
-# True iff an update was not required
+# True iff an update was required
 def check_and_update_ip_object_asn(ip_object, username):
-    arriving_asn = ip_object.asn
+    #if ip_object.status == Status.ANALYZED:
+    #    return False
+    arriving_asn = get_asn_str_from_object(ip_object)
     ip_address = ip_object.ip
-    correct_asn = DNSLookup(ip_address, 'IPv4 Address')
+    (correct_asn, as_name) = DNSLookup(ip_address, 'IPv4 Address')
     if arriving_asn != correct_asn:
         update_ip_object_asn(ip_object, correct_asn, username)
-        return False
-    return True
+        add_flag_comment_to_ip(ip_object, username)
+    update_ip_object_as_name(ip_object, as_name, username)
+    #ip_object.set_status(Status.ANALYZED)
+    return
+
+def get_asn_str_from_object(ip_object):
+    for o in ip_object.obj:
+        if o.object_type == ObjectTypes.AS_NUMBER:
+            return o.value
 
 def DNSLookup(ip, ip_type):
+    """
+    Lookup the ASN and AS Name for the given IP using a DNS Lookup service.
+    :param ip:
+    :param ip_type:
+    :return: (asn, as name)
+    """
     ip_numbers = ip.split('.')
     # need to reverse the sections of the IP in order to make the correct request for this IP
     ip_numbers.reverse()
@@ -109,15 +129,18 @@ def DNSLookup(ip, ip_type):
         # TODO Figure out how to convert IPv6 address to 'nibble' format. Also, not sure if Shadowserver URL similar.
         output = commands.getstatusoutput("dig +short " + reversed_ip + ".origin6.asn.cymru.com TXT")
     asn = GetASNFromOutput(output)
-    return asn
+    as_name = GetASNameFromOutput(output)
+    return (asn, as_name)
 
 def GetASNFromOutput(output):
-    asn = output[1].split("|", 1)[0]  # ASN is the first value
+    asn = output[1].split("|", 1)[0]      # ASN is the first value (index 0)
     return asn.strip().replace("\"", "")  # remove extra characters
 
-def update_ip_object_asn(ip_object, asn, username):
-    ip_object.asn = asn
+def GetASNameFromOutput(output):
+    as_name = output[1].split("|")[2]        # AS Name is the third value (index 2)
+    return as_name.strip().replace("\"", "") # remove extra characters
 
+def update_ip_object_asn(ip_object, asn, username):
     # Remove old AS Number object(s)
 
     # To prevent skipping objects in ip_object.obj due to removing objects, store list of ASNs to remove.
@@ -130,6 +153,7 @@ def update_ip_object_asn(ip_object, asn, username):
 
     # add new AS Number object
     for s in ip_object.source:
+        #TODO: Should I add an object for each source, or just once? Which source do I add it for?
         ip_object.add_object(ObjectTypes.AS_NUMBER, asn, s.name, '', '', username)
     return
 
@@ -165,30 +189,46 @@ def add_flag_comment_to_ip(ip_object, analyst):
     comment.comment_to_html()
     return
 
+def update_ip_object_as_name(ip_object, as_name, username):
+    # To prevent skipping objects in ip_object.obj due to removing objects, store list of AS Names to remove.
+    old_as_names = []
+    for o in ip_object.obj:
+        if o.object_type == ObjectTypes.AS_NAME:
+            old_as_names.append(o.value)
+    for old_as_name in old_as_names:
+        ip_object.remove_object(ObjectTypes.AS_NAME, old_as_name)
+
+    # add new AS Name object
+    for s in ip_object.source:
+        #TODO: Should I add an object for each source, or just once? Which source do I add it for?
+        ip_object.add_object(ObjectTypes.AS_NAME, as_name, s.name, '', '', username)
+    return
+
+# True iff additional sources had to be added
 def add_additional_sources(ip_object, username):
     try:
-        asn = int(ip_object.asn)
+        asn = int(get_asn_str_from_object(ip_object))
     except ValueError:
         return
-    is_asn_in_sources = False
+    is_asn_in_ip_sources = False
     for src in ip_object.source:
-        source_objects = SourceAccess.objects().filter(name=src.name)
-        for src_obj in source_objects:
-            if asn in src_obj.asns:
-                is_asn_in_sources = True
-                break
-    if not is_asn_in_sources:
-        source = asn_to_source_name(asn)
-        if source:
-            source = [create_embedded_source(source,
-                                             reference=None,
-                                             method=None,
-                                             analyst=username)]
+        source_object = SourceAccess.objects().filter(name=src.name).first()
+        if asn in source_object.asns:
+            is_asn_in_ip_sources = True
+            #add_instance_to_existing_releasability(ip_object, source_object.name, username)
+            break
+    if not is_asn_in_ip_sources:
+        source_name = asn_to_source_name(asn)
+        if source_name:
+            source = create_embedded_source(source_name,
+                                            reference=None,
+                                            method=None,
+                                            analyst=username)
             if source:
-                for s in source:
-                    ip_object.add_source(s)
-                    add_releasability('IP', ip_object.id, s.name, username)
-                    add_releasability_instance('IP', ip_object.id, s.name, username)
+                ip_object.add_source(source)
+                # Add a brand new releasability, and an instance to that releasability.
+                add_releasability('IP', ip_object.id, source.name, username)
+                add_releasability_instance('IP', ip_object.id, source.name, username)
 
 def asn_to_source_name(asn):
     sources = SourceAccess.objects()
@@ -197,6 +237,24 @@ def asn_to_source_name(asn):
             return src.name
 
 
+
+# CURRENTLY NOT USED
+# Add releasability instance to an already existing releasability.
+def add_instance_to_existing_releasability(ip_object, source_name, username):
+    is_releasability_present = False
+    for releasability in ip_object.releasability:
+        if releasability.name == source_name and releasability.analyst == username:
+            is_releasability_present = True
+            #for instance in releasability.instances:
+            #    if instance.analyst == username:
+            #        is_releasability_instance_present = True
+            #        break
+            break
+    #if not is_releasability_present:
+    #    add_releasability('IP', ip_object.id, source_name, username)
+    if is_releasability_present:
+        add_releasability_instance('IP', ip_object.id, source_name, username)
+    pass
 
 # CURRENTLY NOT USED
 def notify_user_incorrect_asn(username):
