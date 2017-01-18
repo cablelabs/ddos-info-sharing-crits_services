@@ -78,7 +78,9 @@ def add_or_update_ip_object(analyst, source, ip_object):
     total_pps = ip_object.get('TotalPPS', None)
     as_number = ip_object.get('SourceASN', None)
     attack_type = ip_object.get('AttackType', None)
-    alert_type = ip_object.get('AlertType', None)
+    extra = ip_object.get('Extra', None)
+    source_port = ip_object.get('SourcePort')
+    dest_port = ip_object.get('DestinationPort')
 
     add_to_original_ip_collection = True
 
@@ -95,7 +97,7 @@ def add_or_update_ip_object(analyst, source, ip_object):
                                ticket=ticket,
                                is_add_indicator=add_indicator,
                                indicator_reference=indicator_reference,
-                               alert_type=alert_type,
+                               extra=extra,
                                as_number=as_number,
                                attack_type=attack_type,
                                city=city,
@@ -105,12 +107,43 @@ def add_or_update_ip_object(analyst, source, ip_object):
                                number_of_times=number_of_times,
                                state=state,
                                total_bps=total_bps,
-                               total_pps=total_pps)
+                               total_pps=total_pps,
+                               source_port=source_port,
+                               dest_port=dest_port)
         if not result['success']:
             raise Exception('Failed to add/update IP object: ' + result.message)
         return
 
-    # add object to separate collection outside of CRITs database
+
+# Currently not used
+# Purpose is to add object to separate collection outside of CRITs database.
+def add_to_separate_db(ip_object):
+    ip = ip_object.get('IPaddress', None)
+    ip_type = ip_address_type(ip)
+    if not ip or not ip_type:
+        raise Exception('Must provide an IP, IP Type, and Source.')
+
+    method = ip_object.get('method', None)
+    reference = ip_object.get('reference', None)
+    campaign = ip_object.get('campaign', None)
+    confidence = ip_object.get('confidence', None)
+    add_indicator = ip_object.get('add_indicator', False)
+    indicator_reference = ip_object.get('indicator_reference', None)
+    bucket_list = ip_object.get('bucket_list', None)
+    ticket = ip_object.get('ticket', None)
+
+    # New IP object properties, arranged in the order they appear in our schema.
+    first_seen = ip_object.get('FirstSeen', None)
+    last_seen = ip_object.get('LastSeen', None)
+    number_of_times = ip_object.get('NumberOfTimes', None)
+    city = ip_object.get('City', None)
+    state = ip_object.get('State', None)
+    country = ip_object.get('Country', None)
+    total_bps = ip_object.get('TotalBPS', None)
+    total_pps = ip_object.get('TotalPPS', None)
+    as_number = ip_object.get('SourceASN', None)
+    attack_type = ip_object.get('AttackType', None)
+    alert_type = ip_object.get('AlertType', None)
     try:
         client = MongoClient('localhost', 27017)
         db = client.data_ingest_ip_info
