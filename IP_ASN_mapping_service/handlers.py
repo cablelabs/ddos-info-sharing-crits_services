@@ -21,9 +21,6 @@ from crits.vocabulary.status import Status
 # global variables
 process = None
 
-# constants
-use_oplog = True
-
 def start_or_stop_service():
     global process
     if process is None:
@@ -54,6 +51,8 @@ def process_status():
     return 'Stopped'
 
 def process_data():
+    # constants
+    use_oplog = True
     if use_oplog:
         process_from_oplog()
         return
@@ -78,21 +77,25 @@ def process_from_oplog():
             while cursor.alive:
                 for doc in cursor:
                     timestamp = doc['ts']
-                    username = doc['o']['user']
+                    #username = doc['o']['user']
                     object_id = doc['o']['target_id']
                     ip_object = IP.objects(id=object_id).first()
-                    if ip_object and ip_object.status != Status.ANALYZED:
-                        check_and_update_ip_object_asn(ip_object, username)
-                        add_additional_sources_to_ip(ip_object, username)
-                        ip_object.set_status(Status.ANALYZED)
-                        #TODO: potential looping problem because this will add another entry to the audit_log
-                        ip_object.save(username=username)
-                        add_as_name_to_sources(ip_object)
-
+                    analyze_ip_entry(ip_object, False)
                 time.sleep(1)
-        except:
+        except Exception as e:
+            print(e.message)
             continue
     return
+
+def analyze_ip_entry(ip_object, is_rerun):
+    if ip_object and (is_rerun or ip_object.status != Status.ANALYZED):
+        username = "analysis_autofill"
+        check_and_update_ip_object_asn(ip_object, username)
+        add_additional_sources_to_ip(ip_object, username)
+        ip_object.set_status(Status.ANALYZED)
+        # TODO: potential looping problem because this will add another entry to the audit_log
+        ip_object.save(username=username)
+        add_as_name_to_sources(ip_object)
 
 def check_and_update_ip_object_asn(ip_object, username):
     arriving_asn = get_asn_str_from_object(ip_object)
@@ -108,6 +111,7 @@ def get_asn_str_from_object(ip_object):
     for o in ip_object.obj:
         if o.object_type == ObjectTypes.AS_NUMBER:
             return o.value
+    return ''
 
 def DNSLookup(ip, ip_type):
     """
@@ -138,7 +142,9 @@ def GetASNameFromOutput(output):
     return as_name.strip().replace("\"", "") # remove extra characters
 
 def update_ip_object_asn(ip_object, asn, username):
-    # Remove old AS Number object(s)
+    if not asn:
+        return
+    # First, remove old AS Number object(s)
     # To prevent skipping objects in ip_object.obj due to removing objects, store list of ASNs to remove.
     asn_values = []
     for o in ip_object.obj:
@@ -186,6 +192,9 @@ def add_flag_comment_to_ip(ip_object, analyst):
     return
 
 def update_ip_object_as_name(ip_object, as_name, username):
+    if not as_name:
+        return
+    # First, remove old AS Name object(s).
     # To prevent skipping objects in ip_object.obj due to removing objects, store list of AS Names to remove.
     old_as_names = []
     for o in ip_object.obj:
@@ -204,7 +213,7 @@ def update_ip_object_as_name(ip_object, as_name, username):
 def add_additional_sources_to_ip(ip_object, username):
     try:
         asn = int(get_asn_str_from_object(ip_object))
-    except ValueError:
+    except (TypeError, ValueError):
         return
     is_asn_in_ip_sources = False
     for src in ip_object.source:
@@ -263,6 +272,23 @@ def get_as_number_and_name_from_ip(ip_object):
         if as_number and as_name:
             break
     return (as_number, as_name)
+
+
+def rerun_service():
+    try:
+        client = pymongo.MongoClient()
+        ips = client.crits.ips
+        all_ip_entries = ips.find()
+
+        for ip_entry in all_ip_entries:
+            ip_object = IP.objects(id=ip_entry['_id']).first()
+            analyze_ip_entry(ip_object, True)
+
+        return {'success': True,
+                'html': ''}
+    except Exception:
+        return {'success': False,
+                'html': ''}
 
 
 ### ALL FUNCTIONS BELOW CURRENTLY NOT USED ###
