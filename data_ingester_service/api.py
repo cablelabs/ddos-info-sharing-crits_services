@@ -27,6 +27,7 @@ class DataIngesterResource(CRITsAPIResource):
     """
 
     class Meta:
+        some_var = "Can you read this?"
         object_class = DataIngesterObject
         allowed_methods = ('get', 'post')
         resource_name = "data_ingester_resource"
@@ -34,6 +35,12 @@ class DataIngesterResource(CRITsAPIResource):
                                              CRITsSessionAuthentication())
         authorization = authorization.Authorization()
         serializer = CRITsSerializer()
+
+    def alter_list_data_to_serialize(self, request, data):
+        source_name = "blah"
+        data['meta']['SourceName'] = source_name
+        data['dis-data'] = data.pop('objects')
+        return data
 
     def obj_get_list(self, request=None, **kwargs):
         """
@@ -53,8 +60,8 @@ class DataIngesterResource(CRITsAPIResource):
         for o in ip_object.obj:
             if o.object_type == ObjectTypes.AS_NUMBER:
                 obj.dis_data['SourceASN'] = o.value
-            elif o.object_type == ObjectTypes.ALERT_TYPE:
-                obj.dis_data['AlertType'] = o.value
+            elif o.object_type == ObjectTypes.EXTRA:
+                obj.dis_data['Extra'] = o.value
             elif o.object_type == ObjectTypes.ATTACK_TYPE:
                 obj.dis_data['AttackType'] = o.value
             elif o.object_type == ObjectTypes.CITY:
