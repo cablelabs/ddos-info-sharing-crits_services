@@ -63,8 +63,6 @@ class DataDistributionResource(CRITsAPIResource):
         resource_name = "data_distribution_resource"
         collection_name = "dis-data"
         excludes = ["id", "resource_uri", "unsupported_attrs"]
-        limit = 0
-        max_limit = 0
         authentication = MultiAuthentication(CRITsApiKeyAuthentication(),
                                              CRITsSessionAuthentication())
         authorization = authorization.Authorization()
