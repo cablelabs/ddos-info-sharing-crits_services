@@ -254,7 +254,7 @@ def add_as_name_to_sources(ip_object):
                         src.asns.append(as_number_int)
                         src.save()
                     return
-                except ValueError:
+                except (TypeError, ValueError):
                     continue
 
         # No existing source with AS Name, so create one

@@ -58,6 +58,7 @@ class DataDistributionResource(CRITsAPIResource):
             'longitude': 'Longitude',
             'attack_types': 'Attack Types'
         }
+        self.default_limit = 20
 
     class Meta:
         object_class = DataDistributionObject
@@ -94,7 +95,12 @@ class DataDistributionResource(CRITsAPIResource):
         if not request:
             request = kwargs['bundle'].request
         username = request.GET.get('username', '')
-        return self.create_list_from_ip_objects(username)
+        limit = self.default_limit
+        try:
+            limit = int(request.GET.get('limit', self.default_limit))
+        except (TypeError, ValueError):
+            pass
+        return self.create_list_from_ip_objects(username, limit)
 
     # CURRENTLY UNUSED
     def create_list_from_mongo_client(self, username):
@@ -140,12 +146,12 @@ class DataDistributionResource(CRITsAPIResource):
         return False
 
     # Portions of code in this function are based on get_object_list() in core/api.py
-    def create_list_from_ip_objects(self, username):
+    def create_list_from_ip_objects(self, username, limit=0):
         querydict = {}
         # Use only entries with at least one source in the list of sources the user has access to.
         source_list = user_sources(username)
         querydict['source.name'] = {'$in': source_list}
-        all_ip_entries = IP.objects(__raw__=querydict)
+        all_ip_entries = IP.objects(__raw__=querydict)[:limit]
         return_list = []
         for ip_entry in all_ip_entries:
             new_obj = DataDistributionObject()
