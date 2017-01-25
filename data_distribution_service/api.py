@@ -6,10 +6,12 @@ import pymongo
 from crits.core.api import CRITsApiKeyAuthentication, CRITsSessionAuthentication
 from crits.core.api import CRITsSerializer, CRITsAPIResource
 from crits.core.crits_mongoengine import CritsDocument
-from crits.core.user_tools import get_user_organization
+from crits.core.user_tools import get_user_organization, user_sources
+from crits.ips.ip import IP
 from crits.vocabulary.objects import ObjectTypes
-from crits.core.user import CRITsUser
-from crits.core.user_tools import user_sources, is_admin
+
+from django.db.models import F
+
 
 
 class DataDistributionObject(CritsDocument, Document):
@@ -91,10 +93,14 @@ class DataDistributionResource(CRITsAPIResource):
         """
         if not request:
             request = kwargs['bundle'].request
+        username = request.GET.get('username', '')
+        return self.create_list_from_ip_objects(username)
+
+    # CURRENTLY UNUSED
+    def create_list_from_mongo_client(self, username):
         client = pymongo.MongoClient()
         ips = client.crits.ips
         all_ip_entries = ips.find()
-        username = request.GET.get('username', '')
         return_list = []
         for ip_entry in all_ip_entries:
             # Create new object with data only if at least one of the sources in the IP object is a source of the user.
@@ -125,9 +131,43 @@ class DataDistributionResource(CRITsAPIResource):
 
     # Returns true iff at least one of the sources in the ip_entry is a source of the user with the input name.
     def is_ip_in_users_network(self, ip_entry, username):
+        #return True
         ip_sources = ip_entry['source']
         user_source_name_list = user_sources(username)
         for source in ip_sources:
             if source['name'] in user_source_name_list:
                 return True
         return False
+
+    # Portions of code in this function are based on get_object_list() in core/api.py
+    def create_list_from_ip_objects(self, username):
+        querydict = {}
+        # Use only entries with at least one source in the list of sources the user has access to.
+        source_list = user_sources(username)
+        querydict['source.name'] = {'$in': source_list}
+        all_ip_entries = IP.objects(__raw__=querydict)
+        return_list = []
+        for ip_entry in all_ip_entries:
+            new_obj = DataDistributionObject()
+            new_obj.ip_address = ip_entry.ip
+            for o in ip_entry.obj:
+                if o.object_type == ObjectTypes.ATTACK_TYPE:
+                    new_obj.attack_types = o.value
+                elif o.object_type == ObjectTypes.CITY:
+                    new_obj.city = o.value
+                elif o.object_type == ObjectTypes.COUNTRY:
+                    new_obj.country = o.value
+                elif o.object_type == ObjectTypes.NUMBER_OF_TIMES_SEEN:
+                    new_obj.number_of_times = o.value
+                elif o.object_type == ObjectTypes.STATE:
+                    new_obj.state = o.value
+                elif o.object_type == ObjectTypes.TIME_FIRST_SEEN:
+                    new_obj.first_seen = o.value
+                elif o.object_type == ObjectTypes.TIME_LAST_SEEN:
+                    new_obj.last_seen = o.value
+                elif o.object_type == ObjectTypes.TOTAL_BYTES_PER_SECOND:
+                    new_obj.total_bps = o.value
+                elif o.object_type == ObjectTypes.TOTAL_PACKETS_PER_SECOND:
+                    new_obj.total_pps = o.value
+            return_list.append(new_obj)
+        return return_list
