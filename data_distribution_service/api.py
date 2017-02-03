@@ -54,7 +54,7 @@ class DataDistributionResource(CRITsAPIResource):
             'city': 'City',
             'state': 'State',
             'country': 'Country',
-            'latitude': 'Latitutde',
+            'latitude': 'Latitude',
             'longitude': 'Longitude',
             'attack_types': 'Attack Types'
         }
