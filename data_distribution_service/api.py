@@ -43,20 +43,20 @@ class DataDistributionResource(CRITsAPIResource):
     def __init__(self):
         super(DataDistributionResource, self).__init__()
         self.field_name_to_display_name = {
-            'ip_address': 'IP Address',
-            'number_of_times': 'Number of Times Seen',
-            'first_seen': 'First Time Seen',
-            'last_seen': 'Last Time Seen',
-            'total_bps': 'Total BPS',
-            'total_pps': 'Total PPS',
-            'peak_bps': 'Peak BPS',
-            'peak_pps': 'Peak PPS',
+            'ip_address': 'IPaddress',
+            'number_of_times': 'numberOfTimesSeen',
+            'first_seen': 'firstTimeSeen',
+            'last_seen': 'lastTimeSeen',
+            'total_bps': 'totalBPS',
+            'total_pps': 'totalPPS',
+            'peak_bps': 'peakBPS',
+            'peak_pps': 'peakPPS',
             'city': 'City',
             'state': 'State',
             'country': 'Country',
             'latitude': 'Latitude',
             'longitude': 'Longitude',
-            'attack_types': 'Attack Types'
+            'attack_types': 'attackTypes'
         }
         self.default_limit = 20
 
@@ -80,7 +80,11 @@ class DataDistributionResource(CRITsAPIResource):
 
     def dehydrate(self, bundle):
         for key, value in self.field_name_to_display_name.items():
-            bundle.data[value] = bundle.data.pop(key)
+            if key in bundle.data:
+                if bundle.data[key]:
+                    bundle.data[value] = bundle.data.pop(key)
+                else:
+                    del bundle.data[key]
         return bundle
 
     def obj_get_list(self, request=None, **kwargs):

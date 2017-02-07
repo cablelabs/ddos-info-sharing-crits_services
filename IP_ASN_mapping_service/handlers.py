@@ -109,71 +109,69 @@ def update_sources(dns_lookup_data):
     :return: Name of source, as a string, that should be added to the IP object being analyzed.
     """
     as_name = dns_lookup_data.as_name
+    dns_lookup_source_name = as_name
+    new_alias_name = ""
 
+    # TODO: See how this regex handles emtpy name. What ASN would give an empty name?
     unresolved_names_pattern = "^.$|^(?!.*[A-Za-z])|Private$|Reserved$|^ASN|^AS(?![A-Za-z])"
     is_as_name_unresolved_result = re.search(unresolved_names_pattern, as_name)
     if is_as_name_unresolved_result:
         isp_name = dns_lookup_data.isp
         is_isp_unresolved_result = re.search(unresolved_names_pattern, isp_name)
-        source_name = isp_name
-        if is_isp_unresolved_result:
-            source_name = as_name
-        unresolved_source = find_source_from_name("TBD-UNRESOLVED")
-        if unresolved_source:
-            if as_name not in unresolved_source.aliases:
-                unresolved_source.aliases.append(source_name)
-                unresolved_source.save()
-        add_update_as_name_source(dns_lookup_data, "TBD-UNRESOLVED")
-        return source_name
+        if not is_isp_unresolved_result:
+            dns_lookup_source_name = isp_name
+        else:
+            new_alias_name = "TBD-UNRESOLVED"
 
     region_specific_names_pattern = "^([A-Za-z]*)-(.*)"
-    region_specific_names_result = re.search(region_specific_names_pattern, as_name)
+    region_specific_names_result = re.search(region_specific_names_pattern, dns_lookup_source_name)
     if region_specific_names_result:
-        prefix_sub_string = region_specific_names_result.group(1)
-        source = find_source_from_name(prefix_sub_string)
-        if not source:
-            # No existing source with name of sub-string, so create one
-            add_new_source(prefix_sub_string, '', '')
-            source = find_source_from_name(prefix_sub_string)
-        # Hopefully source exists by this point, but an error may have occurred when creating a new source.
-        if source:
-            if as_name not in source.aliases:
-                source.aliases.append(as_name)
-                source.save()
-        add_update_as_name_source(dns_lookup_data, prefix_sub_string)
-        return as_name
+        # Use prefix before first dash as new alias name.
+        new_alias_name = region_specific_names_result.group(1)
 
-    add_update_as_name_source(dns_lookup_data, '')
-    return as_name
+    update_dns_lookup_source_and_alias_source(dns_lookup_source_name, dns_lookup_data, new_alias_name)
+    return dns_lookup_source_name
 
-def add_update_as_name_source(dns_lookup_data, additional_alias):
+def update_dns_lookup_source_and_alias_source(dns_lookup_source_name, dns_lookup_data, new_alias_name):
     """
-    Update source whose name is AS Name of input data, or add this source if it does not yet exist.
+    Update source that will be added to whose name is AS Name of input data, or add this source if it does not yet exist.
+    :param dns_lookup_source_name: Name of source to add/update that is tied to DNS Lookup data.
     :param dns_lookup_data: DNS Lookup data.
-    :param additional_alias: String representing which source to add to aliases field.
+    :param new_alias_name: String representing name of source which should be alias of new source, and which should
+        have new source as an alias.
     :return:
     """
     as_number = dns_lookup_data.as_number
-    as_name = dns_lookup_data.as_name
-    # TODO: See how my regex handles emtpy name. What ASN would give an empty name?
-    if as_name:
-        as_name_source = find_source_from_name(as_name)
-        if not as_name_source:
-            # No existing source with AS Name, so create one
-            add_new_source(as_name, as_number, '')
-            as_name_source = find_source_from_name(as_name)
-        # Hopefully source exists by this point, but an error may have occurred when creating a new source.
-        if as_name_source:
-            try:
-                as_number_int = int(as_number)
-                if as_number_int not in as_name_source.asns:
-                    as_name_source.asns.append(as_number_int)
-            except (TypeError, ValueError):
-                pass
-            as_name_source.country_code = dns_lookup_data.country_code
-            if additional_alias:
-                as_name_source.aliases.append(additional_alias)
-            as_name_source.save()
+    dns_lookup_source = find_source_from_name(dns_lookup_source_name)
+    if not dns_lookup_source:
+        # No existing source with DNS Lookup source name, so create one.
+        add_new_source(dns_lookup_source_name, as_number, '')
+        dns_lookup_source = find_source_from_name(dns_lookup_source_name)
+    # Hopefully source exists by this point, but an error may have occurred when creating a new source.
+    if dns_lookup_source:
+        try:
+            as_number_int = int(as_number)
+            if as_number_int not in dns_lookup_source.asns:
+                dns_lookup_source.asns.append(as_number_int)
+        except (TypeError, ValueError):
+            pass
+        dns_lookup_source.country_code = dns_lookup_data.country_code
+        if new_alias_name:
+            new_alias_source = find_source_from_name(new_alias_name)
+            if not new_alias_source:
+                add_new_source(new_alias_name, '', '')
+                new_alias_source = find_source_from_name(new_alias_name)
+            # Hopefully source exists by this point, but an error may have occurred when creating a new source.
+            if new_alias_source:
+                if new_alias_name not in dns_lookup_source.aliases:
+                    dns_lookup_source.aliases.append(new_alias_name)
+                for alias in new_alias_source.aliases:
+                    if alias != dns_lookup_source_name and alias not in dns_lookup_source.aliases:
+                        dns_lookup_source.aliases.append(alias)
+                if dns_lookup_source_name not in new_alias_source.aliases:
+                    new_alias_source.aliases.append(dns_lookup_source_name)
+                new_alias_source.save()
+        dns_lookup_source.save()
     return
 
 # Iterate through sources to see if source with input name exists.
