@@ -128,9 +128,9 @@ class DataDistributionResource(CRITsAPIResource):
 
         raw_query = create_raw_query(self.request)
         limit = get_limit(self.request)
-        ip_entries = IP.objects(__raw__=raw_query)[:limit]
+        ip_entries = IP.objects(__raw__=raw_query)
         data_distribution_object_list = self.create_data_distribution_object_list(ip_entries)
-        return data_distribution_object_list
+        return data_distribution_object_list[:limit]
 
     def create_data_distribution_object_list(self, ip_entries):
         object_list = []
