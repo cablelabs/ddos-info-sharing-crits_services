@@ -60,8 +60,8 @@ def process_from_oplog():
                         'o.type': 'IP'}
             # oplog is capped collection, so it can be tailed
             cursor = oplog.find(queryset,
-                                tailable=True,
-                                await_data=True)
+                                cursor_type=pymongo.CursorType.TAILABLE_AWAIT,
+                                oplog_replay=True)
             cursor.add_option(8)
             while cursor.alive:
                 for doc in cursor:

@@ -180,6 +180,15 @@ class DataDistributionResource(CRITsAPIResource):
                 raise ValueError("'sortBy' parameter is not a valid field to sort on.")
             sort_order = self.request.GET.get('sortOrder', 'desc')
             is_reverse = (sort_order == 'desc')
-            sorted_object_list = sorted(object_list, key=lambda x: getattr(x, field_name), reverse=is_reverse)
+            sorted_object_list = sorted(object_list, key=lambda x: self.get_field_from_object(x, field_name), reverse=is_reverse)
             return sorted_object_list
         return object_list
+
+    def get_field_from_object(self, obj, field_name):
+        value = getattr(obj, field_name)
+        try:
+            # TODO: will we ever use float values, or only integer values?
+            int_value = int(value)
+            return int_value
+        except (TypeError, ValueError):
+            return value
