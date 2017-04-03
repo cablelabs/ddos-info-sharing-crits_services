@@ -121,3 +121,34 @@ def sort_ip_entries(self, request, ip_entries):
             ip_entries = ip_entries.order_by(sort_query_string)
 
     return ip_entries
+
+# project = {
+        #     '$ip': 1,
+        #     'numTimesSeen':
+        #         {
+        #             '$cond': { 'if': { '$eq': [] }, 'then': '', 'else': ''}
+        #         }
+        # }
+        #
+        # IP.aggregate([
+        #     {'$unwind': '$objects'},
+        #     {'$project': {'$ip': 1, '$type': '$value'}},
+        #     {'$group': {'ip': '$ip', 'numTimesSeen': 'Number of Times Seen'}}
+        # ])
+
+        # IP.aggregate([
+        #     { '$project':
+        #         { 'newObjects':
+        #             { '$map':
+        #                 {
+        #                     'input': '$objects',
+        #                     'as': 'obj',
+        #                     'in':
+        #                         {
+        #                             '$cond': { 'if': {'$eq': ['$$obj.key', 'Number of Times']}}
+        #                         }
+        #                 }
+        #             }
+        #         }
+        #     }
+        # ])

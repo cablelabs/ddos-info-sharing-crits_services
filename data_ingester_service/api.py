@@ -5,7 +5,7 @@ from tastypie.authentication import MultiAuthentication
 from crits.core.api import CRITsApiKeyAuthentication, CRITsSessionAuthentication
 from crits.core.api import CRITsSerializer, CRITsAPIResource
 from crits.core.crits_mongoengine import CritsDocument
-from crits.core.user_tools import user_sources
+from crits.core.user_tools import get_user_organization, user_sources
 from crits.ips.ip import IP
 from crits.vocabulary.objects import ObjectTypes
 
@@ -27,19 +27,20 @@ class DataIngesterResource(CRITsAPIResource):
     """
 
     class Meta:
-        some_var = "Can you read this?"
         object_class = DataIngesterObject
         allowed_methods = ('get', 'post')
         resource_name = "data_ingester_resource"
+        collection_name = "dis-data"
         authentication = MultiAuthentication(CRITsApiKeyAuthentication(),
                                              CRITsSessionAuthentication())
         authorization = authorization.Authorization()
         serializer = CRITsSerializer()
 
     def alter_list_data_to_serialize(self, request, data):
-        source_name = "blah"
-        data['meta']['SourceName'] = source_name
-        data['dis-data'] = data.pop('objects')
+        del data['meta']
+        username = request.GET.get('username', '')
+        source_name = get_user_organization(username)
+        data['SourceName'] = source_name
         return data
 
     def obj_get_list(self, request=None, **kwargs):

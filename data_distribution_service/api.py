@@ -1,69 +1,16 @@
-from mongoengine import Document, FloatField, IntField, StringField
+from datetime import datetime
 from tastypie import authorization
 from tastypie.authentication import MultiAuthentication
 
 from crits.core.api import CRITsApiKeyAuthentication, CRITsSessionAuthentication
 from crits.core.api import CRITsSerializer, CRITsAPIResource
-from crits.core.crits_mongoengine import CritsDocument
-from crits.core.user_tools import get_user_organization
+from crits.core.user_tools import get_user_organization, user_sources
 from crits.ips.ip import IP
 from crits.vocabulary.objects import ObjectTypes
 
+from DataDistributionObject import DataDistributionObject
 from handlers import create_raw_query, get_limit
 
-
-class DataDistributionObject(CritsDocument, Document):
-    """
-    Class to store data for GET requests.
-    """
-    ip_address = StringField(verbose_name='IPaddress')
-    number_of_times = IntField()
-    first_seen = StringField()
-    last_seen = StringField()
-    total_bps = FloatField()
-    total_pps = FloatField()
-    peak_bps = FloatField()
-    peak_pps = FloatField()
-    city = StringField()
-    state = StringField()
-    country = StringField()
-    latitude = FloatField()
-    longitude = FloatField()
-    attack_types = StringField()
-
-    field_name_to_display_mapping = {
-        'ip_address': 'IPaddress',
-        'number_of_times': 'numberOfTimesSeen',
-        'first_seen': 'firstTimeSeen',
-        'last_seen': 'lastTimeSeen',
-        'total_bps': 'totalBPS',
-        'total_pps': 'totalPPS',
-        'peak_bps': 'peakBPS',
-        'peak_pps': 'peakPPS',
-        'city': 'City',
-        'state': 'State',
-        'country': 'Country',
-        'latitude': 'Latitude',
-        'longitude': 'Longitude',
-        'attack_types': 'attackTypes'
-    }
-
-    @classmethod
-    def get_display_from_field_name(cls, field_name):
-        if field_name not in cls.field_name_to_display_mapping:
-            return None
-        return cls.field_name_to_display_mapping[field_name]
-
-    @classmethod
-    def get_field_name_from_display_name(cls, input_display_name):
-        for field_name, display_name in cls.field_name_to_display_mapping.items():
-            if display_name == input_display_name:
-                return field_name
-        return None
-
-    @classmethod
-    def get_all_display_names(cls):
-        return cls.field_name_to_display_mapping.values()
 
 class DataDistributionResource(CRITsAPIResource):
     """
@@ -74,6 +21,42 @@ class DataDistributionResource(CRITsAPIResource):
     def __init__(self):
         super(DataDistributionResource, self).__init__()
         self.request = None
+        # Set parameters of GET call internally
+        #self.limit = 20
+        #self.sortBy = ''
+        #self.sortOrder = ''
+        #self.createdSince = ''
+        #self.modifiedSince = ''
+        self.aggregation_pipeline = []
+        self.output_field_to_object_type = {
+            'numberOfTimesSeen': ObjectTypes.NUMBER_OF_TIMES_SEEN,
+            'firstTimeSeen': ObjectTypes.TIME_FIRST_SEEN,
+            'lastTimeSeen': ObjectTypes.TIME_LAST_SEEN,
+            'totalBPS': ObjectTypes.TOTAL_BYTES_PER_SECOND,
+            'totalPPS': ObjectTypes.TOTAL_PACKETS_PER_SECOND,
+            'peakBPS': '',
+            'peakPPS': '',
+            'City': ObjectTypes.CITY,
+            'State': ObjectTypes.STATE,
+            'Country': ObjectTypes.COUNTRY,
+            'attackTypes': ObjectTypes.ATTACK_TYPE
+        }
+        self.variable_name_to_output_field = {
+            'ip_address': 'IPaddress',
+            'number_of_times': 'numberOfTimesSeen',
+            'first_seen': 'firstTimeSeen',
+            'last_seen': 'lastTimeSeen',
+            'total_bps': 'totalBPS',
+            'total_pps': 'totalPPS',
+            'peak_bps': 'peakBPS',
+            'peak_pps': 'peakPPS',
+            'city': 'City',
+            'state': 'State',
+            'country': 'Country',
+            'latitude': 'Latitude',
+            'longitude': 'Longitude',
+            'attack_types': 'attackTypes'
+        }
 
     class Meta:
         object_class = DataDistributionObject
@@ -94,17 +77,15 @@ class DataDistributionResource(CRITsAPIResource):
         return data
 
     def dehydrate(self, bundle):
-        null_fields = []
-        for field_name in bundle.data:
-            if bundle.data[field_name]:
-                display_name = DataDistributionObject.get_display_from_field_name(field_name)
-                # Rename field to desired format.
-                if display_name:
-                    bundle.data[display_name] = bundle.data.pop(field_name)
-            else:
-                null_fields.append(field_name)
+        fields_to_remove = []
+        bundle.data = bundle.obj
+        all_output_fields = self.output_field_to_object_type.keys()
+        all_output_fields.append('IPaddress')
+        for key in bundle.data:
+            if not (bundle.data[key] and key in all_output_fields):
+                fields_to_remove.append(key)
         # Remove fields that have null values.
-        for field in null_fields:
+        for field in fields_to_remove:
             del bundle.data[field]
         return bundle
 
@@ -125,12 +106,104 @@ class DataDistributionResource(CRITsAPIResource):
             self.request = request
         else:
             self.request = kwargs['bundle'].request
+        result = self.do_aggregation()
+        return list(result)
 
-        raw_query = create_raw_query(self.request)
-        limit = get_limit(self.request)
-        ip_entries = IP.objects(__raw__=raw_query)
-        data_distribution_object_list = self.create_data_distribution_object_list(ip_entries)
-        return data_distribution_object_list[:limit]
+    def do_aggregation(self):
+        self.aggregation_pipeline = []
+        #self._add_source_filter_to_pipeline()
+        self._add_field_projections_to_pipeline()
+        #self._add_created_filter_to_pipeline()
+        #self._add_modified_filter_to_pipeline()
+        #self._add_sort_to_pipeline()
+        #self._add_limit_to_pipeline()
+        value = IP.objects.filter().aggregate(*self.aggregation_pipeline, useCursor=False)
+        return value
+
+    # Filter on entries with at least one source in the list of sources the user has access to.
+    def _add_source_filter_to_pipeline(self):
+        username = self.request.GET.get('username', '')
+        source_list = user_sources(username)
+        match = { '$match': {'source.name': {'$in': source_list}} }
+        self.aggregation_pipeline.append(match)
+
+    def _add_field_projections_to_pipeline(self):
+        project = {'$project': { '_id': 0, 'IPaddress': '$ip'} }
+        for output_field, object_type in self.output_field_to_object_type.items():
+            project['$project'][output_field] = {
+                '$let': {
+                    'vars': {
+                        'one_obj': {
+                            '$arrayElemAt': [
+                                {
+                                    '$filter': {
+                                        'input': '$objects',
+                                        'as': 'obj',
+                                        'cond': {'$eq': ['$$obj.type', object_type]}
+                                    }
+                                },
+                                0
+                            ]
+                        }
+                    },
+                    'in': '$$one_obj.value'
+                }
+            }
+        self.aggregation_pipeline.append(project)
+
+    # Filter on entries created since the 'createdSince' time.
+    def _add_created_filter_to_pipeline(self):
+        created_since = self.request.GET.get('createdSince', '')
+        if created_since:
+            try:
+                created_since_datetime = datetime.strptime(created_since, "%Y-%m-%dT%H:%M:%S.%fZ")
+            except (ValueError):
+                try:
+                    created_since_datetime = datetime.strptime(created_since, "%Y-%m-%d")
+                except (ValueError):
+                    raise ValueError("'createdSince' time not a properly formatted ISO string.")
+            match = { '$match': {'firstTimeSeen': {'$gte': created_since_datetime}} }
+            self.aggregation_pipeline.append(match)
+
+    # Filter on entries modified since the 'modifiedSince' time.
+    def _add_modified_filter_to_pipeline(self):
+        modified_since = self.request.GET.get('modifiedSince', '')
+        if modified_since:
+            try:
+                modified_since_datetime = datetime.strptime(modified_since, "%Y-%m-%dT%H:%M:%S.%fZ")
+            except (ValueError):
+                try:
+                    modified_since_datetime = datetime.strptime(modified_since, "%Y-%m-%d")
+                except (ValueError):
+                    raise ValueError("'modifiedSince' time not a properly formatted ISO string.")
+            match = { '$match': {'lastTimeSeen': {'$gte': modified_since_datetime}} }
+            self.aggregation_pipeline.append(match)
+
+    def _add_sort_to_pipeline(self):
+        sort_by = self.request.GET.get('sortBy', '')
+        if sort_by:
+            field_name = DataDistributionObject.get_field_name_from_display_name(sort_by)
+            if not field_name:
+                raise ValueError("'sortBy' parameter is not a valid field to sort on.")
+            # Default to descending order
+            sort_order = self.request.GET.get('sortOrder', 'desc')
+            sort_order_number = -1 if (sort_order == 'desc') else 1
+            sort = { '$sort': {sort_by: sort_order_number} }
+            self.aggregation_pipeline.append(sort)
+
+    def _add_limit_to_pipeline(self):
+        input_limit = self.request.GET.get('limit', '20')
+        try:
+            limit_integer = int(input_limit)
+            return limit_integer
+        except (TypeError, ValueError):
+            raise ValueError("'limit' field set to invalid value. Must be integer.")
+
+        limit = { '$limit': limit_integer }
+        self.aggregation_pipeline.append(limit)
+
+
+    ### DEPRECATED BELOW HERE ###
 
     def create_data_distribution_object_list(self, ip_entries):
         object_list = []

@@ -1,7 +1,8 @@
-from crits.ips.handlers import ip_add_update
+import ipaddress
 from pymongo import MongoClient
 
-import ipaddress
+from crits.ips.handlers import ip_add_update
+from crits.vocabulary.objects import ObjectTypes
 
 
 def ip_address_type(ip):
@@ -58,58 +59,81 @@ def add_or_update_ip_object(analyst, source, ip_object):
     if not ip or not ip_type:
         raise Exception('Must provide an IP, IP Type, and Source.')
 
-    method = ip_object.get('method', None)
-    reference = ip_object.get('reference', None)
-    campaign = ip_object.get('campaign', None)
-    confidence = ip_object.get('confidence', None)
-    add_indicator = ip_object.get('add_indicator', False)
-    indicator_reference = ip_object.get('indicator_reference', None)
-    bucket_list = ip_object.get('bucket_list', None)
-    ticket = ip_object.get('ticket', None)
+    #method = ip_object.get('method', None)
+    #reference = ip_object.get('reference', None)
+    #campaign = ip_object.get('campaign', None)
+    #confidence = ip_object.get('confidence', None)
+    #add_indicator = ip_object.get('add_indicator', False)
+    #indicator_reference = ip_object.get('indicator_reference', None)
+    #bucket_list = ip_object.get('bucket_list', None)
+    #ticket = ip_object.get('ticket', None)
 
     # New IP object properties, arranged in the order they appear in our schema.
-    first_seen = ip_object.get('FirstSeen', None)
-    last_seen = ip_object.get('LastSeen', None)
-    number_of_times = ip_object.get('NumberOfTimes', None)
-    city = ip_object.get('City', None)
-    state = ip_object.get('State', None)
-    country = ip_object.get('Country', None)
-    total_bps = ip_object.get('TotalBPS', None)
-    total_pps = ip_object.get('TotalPPS', None)
-    as_number = ip_object.get('SourceASN', None)
-    attack_type = ip_object.get('AttackType', None)
-    extra = ip_object.get('Extra', None)
-    source_port = ip_object.get('SourcePort')
-    dest_port = ip_object.get('DestinationPort')
+    additional_fields = {}
+    # first_seen = ip_object.get('FirstSeen', None)
+    # last_seen = ip_object.get('LastSeen', None)
+    # number_of_times = ip_object.get('NumberOfTimes', None)
+    # city = ip_object.get('City', None)
+    # state = ip_object.get('State', None)
+    # country = ip_object.get('Country', None)
+    # total_bps = ip_object.get('TotalBPS', None)
+    # total_pps = ip_object.get('TotalPPS', None)
+    # as_number = ip_object.get('SourceASN', None)
+    # attack_type = ip_object.get('AttackType', None)
+    # extra = ip_object.get('Extra', None)
+    # source_port = ip_object.get('SourcePort')
+    # dest_port = ip_object.get('DestinationPort')
 
+    object_types_to_parameter = {
+        #ObjectTypes.TIME_FIRST_SEEN: 'FirstSeen',
+        #ObjectTypes.TIME_LAST_SEEN: 'LastSeen',
+        #ObjectTypes.NUMBER_OF_TIMES_SEEN: 'NumberOfTimes',
+        ObjectTypes.CITY: 'City',
+        ObjectTypes.STATE: 'State',
+        ObjectTypes.COUNTRY: 'Country',
+        ObjectTypes.TOTAL_BYTES_PER_SECOND: 'TotalBPS',
+        ObjectTypes.TOTAL_PACKETS_PER_SECOND: 'TotalPPS',
+        ObjectTypes.AS_NUMBER: 'SourceASN',
+        ObjectTypes.ATTACK_TYPE: 'AttackType',
+        ObjectTypes.EXTRA: 'Extra',
+        ObjectTypes.SOURCE_PORT: 'SourcePort',
+        ObjectTypes.DEST_PORT: 'DestinationPort'
+    }
+    for object_type, parameter in object_types_to_parameter.items():
+        additional_fields[object_type] = ip_object.get(parameter, None)
+
+    # Eventually, we may not add to the IP collection, but rather our own DDoS IP object collection.
+    # Or we may add to both collections.
     add_to_original_ip_collection = True
 
     if add_to_original_ip_collection:
         result = ip_add_update(ip,
                                ip_type,
                                source=source,
-                               source_method=method,
-                               source_reference=reference,
-                               campaign=campaign,
-                               confidence=confidence,
+                               #source_method=method,
+                               #source_reference=reference,
+                               #campaign=campaign,
+                               #confidence=confidence,
                                analyst=analyst,
-                               bucket_list=bucket_list,
-                               ticket=ticket,
-                               is_add_indicator=add_indicator,
-                               indicator_reference=indicator_reference,
-                               extra=extra,
-                               as_number=as_number,
-                               attack_type=attack_type,
-                               city=city,
-                               country=country,
-                               first_seen=first_seen,
-                               last_seen=last_seen,
-                               number_of_times=number_of_times,
-                               state=state,
-                               total_bps=total_bps,
-                               total_pps=total_pps,
-                               source_port=source_port,
-                               dest_port=dest_port)
+                               #bucket_list=bucket_list,
+                               #ticket=ticket,
+                               #is_add_indicator=add_indicator,
+                               #indicator_reference=indicator_reference,
+                               # extra=extra,
+                               # as_number=as_number,
+                               # attack_type=attack_type,
+                               # city=city,
+                               # country=country,
+                               # first_seen=first_seen,
+                               # last_seen=last_seen,
+                               # number_of_times=number_of_times,
+                               # state=state,
+                               # total_bps=total_bps,
+                               # total_pps=total_pps,
+                               # source_port=source_port,
+                               # dest_port=dest_port
+                               additional_fields=additional_fields
+                               )
         if not result['success']:
             raise Exception('Failed to add/update IP object: ' + result.message)
         return

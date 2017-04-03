@@ -13,6 +13,7 @@ from crits.core.source_access import SourceAccess
 from crits.core.user_tools import get_user_organization
 from crits.vocabulary.objects import ObjectTypes
 from crits.vocabulary.status import Status
+import geoip2, geoip2.database, geoip2.errors
 
 from DnsLookupData import DnsLookupData
 
@@ -289,34 +290,55 @@ def add_source_to_ip(ip_object, username, source_name):
 ##### GeoIP Lookup #####
 
 def check_GeoIP_data(ip_object, username):
-    # NOTE: Use username if I want to modify objects in ip_object.
-    input_latitude = 0
-    input_longitude = 0
+    input_result = get_coordinates_from_ip_object(ip_object)
+    if input_result:
+        input_latitude, input_longitude = input_result
+        # These two variables are what will be stored in the database, so they must be strings.
+        correct_latitude = str(input_latitude)
+        correct_longitude = str(input_longitude)
+
+        lookup_result = get_coordinates_from_database(ip_object.ip)
+        if lookup_result:
+            lookup_latitude, lookup_longitude = lookup_result
+            is_near_enough = (near_enough(input_latitude, lookup_latitude) and near_enough(input_longitude, lookup_longitude))
+            if not is_near_enough:
+                coordinates_string = str(lookup_latitude) + "," + str(lookup_longitude)
+                add_geoip_comment_to_ip(ip_object, username, coordinates_string)
+                correct_latitude = str(lookup_latitude)
+                correct_longitude = str(lookup_longitude)
+
+        # NOTE: username required to modify objects in ip_object.
+        ip_object.add_object(ObjectTypes.LATITUDE, correct_latitude, 'analysis_autofill', '', '', username)
+        ip_object.add_object(ObjectTypes.LONGITUDE, correct_longitude, 'analysis_autofill', '', '', username)
+        ip_object.save(username=username)
+    return
+
+def get_coordinates_from_ip_object(ip_object):
     for o in ip_object.obj:
         if o.object_type == ObjectTypes.EXTRA:
             extra = o.value
             numbers = extra.split(",", 2)
             if len(numbers) < 2:
-                return
+                return None
             try:
                 input_latitude = float(numbers[0])
                 input_longitude = float(numbers[1])
             except (TypeError, ValueError):
-                return
-            break
+                return None
+            return (input_latitude, input_longitude)
+    return None
 
-    #gi = pygeoip.GeoIP('/usr/share/GeoIP/GeoIP.dat')
-    #record = gi.record_by_addr(ip_object.ip)
-    url = 'http://freegeoip.net/json/'+ip_object.ip
-    r = requests.get(url)
-    js = r.json()
-    lookup_latitude = js['latitude']
-    lookup_longitude = js['longitude']
-    is_near_enough = (near_enough(input_latitude, lookup_latitude) and near_enough(input_longitude, lookup_longitude))
-    if not is_near_enough:
-        coordinates_string = str(lookup_latitude) + "," + str(lookup_longitude)
-        add_geoip_comment_to_ip(ip_object, username, coordinates_string)
-    return
+def get_coordinates_from_database(ip_address):
+    reader = geoip2.database.Reader('/usr/local/share/GeoIP/GeoLite2-City.mmdb')
+    try:
+        response = reader.city(ip_address)
+    except geoip2.errors.AddressNotFoundError:
+        return None
+    if not (response and response.location
+            and response.location.latitude and response.location.longitude):
+        # Doesn't make sense to return result that is missing latitude and/or longitude
+        return None
+    return (response.location.latitude, response.location.longitude)
 
 def near_enough(x, y):
     max_diff = 0.0001
