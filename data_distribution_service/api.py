@@ -182,8 +182,7 @@ class DataDistributionResource(CRITsAPIResource):
     def _add_sort_to_pipeline(self):
         sort_by = self.request.GET.get('sortBy', '')
         if sort_by:
-            field_name = DataDistributionObject.get_field_name_from_display_name(sort_by)
-            if not field_name:
+            if sort_by not in self.variable_name_to_output_field.values():
                 raise ValueError("'sortBy' parameter is not a valid field to sort on.")
             # Default to descending order
             sort_order = self.request.GET.get('sortOrder', 'desc')
