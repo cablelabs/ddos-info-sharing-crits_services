@@ -111,12 +111,12 @@ class DataDistributionResource(CRITsAPIResource):
 
     def do_aggregation(self):
         self.aggregation_pipeline = []
-        #self._add_source_filter_to_pipeline()
+        self._add_source_filter_to_pipeline()
         self._add_field_projections_to_pipeline()
-        #self._add_created_filter_to_pipeline()
-        #self._add_modified_filter_to_pipeline()
-        #self._add_sort_to_pipeline()
-        #self._add_limit_to_pipeline()
+        self._add_created_filter_to_pipeline()
+        self._add_modified_filter_to_pipeline()
+        self._add_sort_to_pipeline()
+        self._add_limit_to_pipeline()
         value = IP.objects.filter().aggregate(*self.aggregation_pipeline, useCursor=False)
         return value
 
