@@ -1,21 +1,23 @@
-from multiprocessing import Process
-import commands
-import os, signal, time, re
+import os
+import pymongo
+import re
+import signal
+import time
 from bson.timestamp import Timestamp
+from multiprocessing import Process
 
-import pymongo, pygeoip, requests
-from crits.ips.ip import IP
 from crits.comments.comment import Comment
-from crits.comments.views import add_update_comment
 from crits.core.crits_mongoengine import create_embedded_source
 from crits.core.handlers import add_releasability, add_releasability_instance, add_new_source
 from crits.core.source_access import SourceAccess
 from crits.core.user_tools import get_user_organization
+from crits.ips.ip import IP
 from crits.vocabulary.objects import ObjectTypes
 from crits.vocabulary.status import Status
-import geoip2, geoip2.database, geoip2.errors
 
-from DnsLookupData import DnsLookupData
+from GeoIPLookup import geoip_lookup
+from ASNLookup.ASNLookupData import ASNLookupData
+from ASNLookup.ip_source_name_lookup import get_designated_source_name, get_primary_source_name
 
 # global variables
 process = None
@@ -53,7 +55,8 @@ def process_from_oplog():
     client = pymongo.MongoClient()
     oplog = client.local.oplog.rs
     #first_entry = oplog.find().sort('ts', pymongo.ASCENDING).limit(1).next()
-    timestamp = Timestamp(1482178094, 1) #first_entry['ts']
+    #timestamp = first_entry['ts']
+    timestamp = Timestamp(1491238150, 1)
     while True:
         try:
             queryset = {'ts': {'$gt': timestamp},
@@ -70,7 +73,7 @@ def process_from_oplog():
                     object_id = doc['o']['target_id']
                     ip_object = IP.objects(id=object_id).first()
                     if (ip_object and ip_object.status != Status.ANALYZED):
-                        analyze_ip_entry(ip_object)
+                        analyze_ip_object(ip_object)
                 time.sleep(1)
         except Exception as e:
             print(e.message)
@@ -79,126 +82,143 @@ def process_from_oplog():
 
 def rerun_service():
     try:
-        client = pymongo.MongoClient()
-        ips = client.crits.ips
-        all_ip_entries = ips.find()
-        for ip_entry in all_ip_entries:
-            ip_object = IP.objects(id=ip_entry['_id']).first()
-            analyze_ip_entry(ip_object)
+        for ip_object in IP.objects:
+            analyze_ip_object(ip_object)
         return {'success': True,
                 'html': ''}
     except Exception:
         return {'success': False,
                 'html': ''}
 
-def analyze_ip_entry(ip_object):
-    if ip_object:
-        username = "analysis_autofill"
-        dns_lookup_data = DnsLookupData(ip_object.ip, 'IPv4 Address')
-        new_source_name = update_sources(dns_lookup_data)
-        update_ip_object(ip_object, username, new_source_name, dns_lookup_data.as_number)
-        check_GeoIP_data(ip_object, username)
+def analyze_ip_object(ip_object):
+    analyst = "analysis_autofill"
+    asn_lookup_data = ASNLookupData(ip_object.ip, 'IPv4 Address')
+    as_number = asn_lookup_data.as_number
+    existing_source_name = get_name_of_source_with_as_number(as_number)
+    if existing_source_name:
+        designated_source_name = existing_source_name
+    else:
+        designated_source_name = get_designated_source_name(asn_lookup_data.as_name, asn_lookup_data.isp)
+        primary_source_name = get_primary_source_name(designated_source_name)
+        update_sources(as_number, asn_lookup_data.country_code, primary_source_name, designated_source_name)
+    update_ip_object(ip_object, analyst, as_number, designated_source_name)
 
-
-##### Updating Sources #####
-
-def update_sources(dns_lookup_data):
+def get_name_of_source_with_as_number(as_number):
     """
-    Update source whose name is AS Name, possibly creating a new source. Then add this source to Alias list of
-    over-arching source, and vice-versa.
-    :param dns_lookup_data: A DnsLookupData object.
-    :return: Name of source, as a string, that should be added to the IP object being analyzed.
+    Return the name of a source, if any, that has the input AS Number.
+    :param as_number: string
+    :return: string, representing the name of the source with the input AS Number, or None if no such source exists
     """
-    as_name = dns_lookup_data.as_name
-    dns_lookup_source_name = as_name
-    new_alias_name = ""
-
-    # TODO: See how this regex handles emtpy name. What ASN would give an empty name?
-    unresolved_names_pattern = "^.$|^(?!.*[A-Za-z])|Private$|Reserved$|^ASN|^AS(?![A-Za-z])"
-    is_as_name_unresolved_result = re.search(unresolved_names_pattern, as_name)
-    if is_as_name_unresolved_result:
-        isp_name = dns_lookup_data.isp
-        is_isp_unresolved_result = re.search(unresolved_names_pattern, isp_name)
-        if not is_isp_unresolved_result:
-            dns_lookup_source_name = isp_name
-        else:
-            new_alias_name = "TBD-UNRESOLVED"
-
-    region_specific_names_pattern = "^([A-Za-z]*)-(.*)"
-    region_specific_names_result = re.search(region_specific_names_pattern, dns_lookup_source_name)
-    if region_specific_names_result:
-        # Use prefix before first dash as new alias name.
-        new_alias_name = region_specific_names_result.group(1)
-
-    update_dns_lookup_source_and_alias_source(dns_lookup_source_name, dns_lookup_data, new_alias_name)
-    return dns_lookup_source_name
-
-def update_dns_lookup_source_and_alias_source(dns_lookup_source_name, dns_lookup_data, new_alias_name):
-    """
-    Update source that will be added to whose name is AS Name of input data, or add this source if it does not yet exist.
-    :param dns_lookup_source_name: Name of source to add/update that is tied to DNS Lookup data.
-    :param dns_lookup_data: DNS Lookup data.
-    :param new_alias_name: String representing name of source which should be alias of new source, and which should
-        have new source as an alias.
-    :return:
-    """
-    as_number = dns_lookup_data.as_number
-    dns_lookup_source = find_source_from_name(dns_lookup_source_name)
-    if not dns_lookup_source:
-        # No existing source with DNS Lookup source name, so create one.
-        add_new_source(dns_lookup_source_name, as_number, '')
-        dns_lookup_source = find_source_from_name(dns_lookup_source_name)
-    # Hopefully source exists by this point, but an error may have occurred when creating a new source.
-    if dns_lookup_source:
+    if as_number:
         try:
             as_number_int = int(as_number)
-            if as_number_int not in dns_lookup_source.asns:
-                dns_lookup_source.asns.append(as_number_int)
         except (TypeError, ValueError):
-            pass
-        dns_lookup_source.country_code = dns_lookup_data.country_code
-        if new_alias_name:
-            new_alias_source = find_source_from_name(new_alias_name)
-            if not new_alias_source:
-                add_new_source(new_alias_name, '', '')
-                new_alias_source = find_source_from_name(new_alias_name)
-            # Hopefully source exists by this point, but an error may have occurred when creating a new source.
-            if new_alias_source:
-                if new_alias_name not in dns_lookup_source.aliases:
-                    dns_lookup_source.aliases.append(new_alias_name)
-                for alias in new_alias_source.aliases:
-                    if alias != dns_lookup_source_name and alias not in dns_lookup_source.aliases:
-                        dns_lookup_source.aliases.append(alias)
-                if dns_lookup_source_name not in new_alias_source.aliases:
-                    new_alias_source.aliases.append(dns_lookup_source_name)
-                new_alias_source.save()
-        dns_lookup_source.save()
-    return
-
-# Iterate through sources to see if source with input name exists.
-def find_source_from_name(source_name):
-    sources = SourceAccess.objects()
-    for src in sources:
-        if source_name == src.name:
-            return src
+            return None
+        source = SourceAccess.objects(asns=as_number_int).first()
+        if source:
+            return source.name
     return None
 
+def update_sources(as_number, country_code, primary_source_name, designated_source_name):
+    """
+    Update primary and designated sources that will be added to whose name is AS Name of input data, or add this source if it does not yet exist.
+    :return:
+    """
+    designated_source = get_source_object_from_name(designated_source_name)
+    if not designated_source:
+        # Create new source whose name is designated_source_name.
+        add_new_source(designated_source_name, as_number, '')
+        designated_source = get_source_object_from_name(designated_source_name)
+    # Hopefully source exists by this point, but an error may have occurred when creating a new source.
+    if designated_source:
+        try:
+            as_number_int = int(as_number)
+            if as_number_int not in designated_source.asns:
+                designated_source.asns.append(as_number_int)
+        except (TypeError, ValueError):
+            pass
+        designated_source.country_code = country_code
+        if designated_source_name != primary_source_name:
+            primary_source = get_source_object_from_name(primary_source_name)
+            if not primary_source:
+                add_new_source(primary_source_name, '', '')
+                primary_source = get_source_object_from_name(primary_source_name)
+            # Hopefully source exists by this point, but an error may have occurred when creating a new source.
+            if primary_source:
+                merge_aliases(designated_source, primary_source)
+                primary_source.save()
+        designated_source.save()
+    return
+
+# TODO: will this handle the case where there is no such source (i.e. will it return None/Null?)?
+def get_source_object_from_name(source_name):
+    """
+    Return source object whose name is source_name.
+    :param source_name: string
+    :return: source object, or None if no source has name source_name
+    """
+    sources = SourceAccess.objects(name=source_name).first()
+    return sources
+
+def merge_aliases(source_one, source_two):
+    """
+    Combine aliases of both input sources, including themselves, and set aliases of both sources to the combined list.
+    :param source_one: 
+    :param source_two: 
+    :return: (nothing)
+    """
+    update_first_source_aliases_with_second_source_aliases(source_one, source_two)
+    update_first_source_aliases_with_second_source_aliases(source_two, source_one)
+    return
+
+def update_first_source_aliases_with_second_source_aliases(first_source, second_source):
+    """
+    Add Second Source, and all aliases of Second Source, to aliases of First Source.
+    :param first_source: 
+    :param second_source: 
+    :return: (nothing)
+    """
+    if second_source.name not in first_source.aliases:
+        first_source.aliases.append(second_source.name)
+    for alias in second_source.aliases:
+        if alias != first_source.name and alias not in first_source.aliases:
+            first_source.aliases.append(alias)
+    return
 
 ##### Updating IP Object #####
 
-def update_ip_object(ip_object, username, new_source_name, as_number):
-    current_as_number = get_asn_str_from_object(ip_object)
-    if current_as_number != as_number:
-        update_ip_object_asn(ip_object, username, as_number)
-        add_flag_comment_to_ip(ip_object, username)
-    update_ip_object_as_name(ip_object, new_source_name, username)
-    add_source_to_ip(ip_object, username, new_source_name)
+def update_ip_object(ip_object, analyst, as_number, designated_source_name):
+    """
+    Update the given IP object, making sure that the IP's AS Number matches the input, and the designated source is a 
+    source of the IP.
+    :param ip_object: 
+    :param analyst: The name of the user through which new objects will be added to the IP object.
+    :param as_number: The AS Number that our ASN Service found.
+    :type as_number: string
+    :param designated_source_name: 
+    :return: 
+    """
+    amend_as_number(ip_object, analyst, as_number)
+    update_ip_object_sub_object(ip_object, analyst, ObjectTypes.AS_NAME, designated_source_name)
+    add_source_to_ip(ip_object, analyst, designated_source_name)
+    amend_geoip_data(ip_object, analyst)
     ip_object.set_status(Status.ANALYZED)
-    # TODO: potential looping problem because this will add another entry to the audit_log
-    ip_object.save(username=username)
+    # TODO: Potential looping problem because saving data to IP will add another entry to the audit_log.
+    ip_object.save(username=analyst)
     return
 
-def get_asn_str_from_object(ip_object):
+def amend_as_number(ip_object, analyst, as_number):
+    current_as_number = get_as_number_from_ip_object(ip_object)
+    if current_as_number != as_number:
+        if as_number:
+            update_ip_object_sub_object(ip_object, analyst, ObjectTypes.AS_NUMBER, as_number)
+            incorrect_asn_comment = "Error: Incorrect ASN given to IP. Corrected by analysis."
+            add_comment_to_ip_object(ip_object, analyst, incorrect_asn_comment)
+        else:
+            null_asn_comment = "Warning: No AS Number found in database, but user gave value '" + current_as_number + "'."
+            add_comment_to_ip_object(ip_object, analyst, null_asn_comment)
+
+def get_as_number_from_ip_object(ip_object):
     """
     :param ip_object:
     :return: string
@@ -208,34 +228,42 @@ def get_asn_str_from_object(ip_object):
             return o.value
     return ''
 
-def update_ip_object_asn(ip_object, username, as_number):
-    if not as_number:
+def update_ip_object_sub_object(ip_object, analyst, sub_object_type, sub_object_value):
+    """
+    For the given IP object, set the value of the sub-object of the given type to the input value.
+    Before this, remove all other sub-objects of the given type.
+    :param ip_object: 
+    :param analyst: The name of the user through which new objects will be added to the IP object.
+    :param sub_object_type:
+    :param sub_object_value:
+    :return: 
+    """
+    if not (sub_object_type and sub_object_value):
         return
-    # First, remove old AS Number object(s)
-    # To prevent skipping objects in ip_object.obj due to removing objects, store list of ASNs to remove.
-    asn_values = []
+    # To prevent skipping objects while iterating through IP's sub-objects, store list of objects to remove later.
+    previous_object_values = []
     for o in ip_object.obj:
-        if o.object_type == ObjectTypes.AS_NUMBER:
-            asn_values.append(o.value)
-    for asn_value in asn_values:
-        ip_object.remove_object(ObjectTypes.AS_NUMBER, asn_value)
-
-    # Add new AS Number object
-    ip_object.add_object(ObjectTypes.AS_NUMBER, as_number, 'analysis_autofill', '', '', username)
+        if o.object_type == sub_object_type:
+            previous_object_values.append(o.value)
+    for prev_value in previous_object_values:
+        ip_object.remove_object(sub_object_type, prev_value)
+    ip_object.add_object(sub_object_type, sub_object_value, get_user_organization(analyst), '', '', analyst)
     return
 
-def add_flag_comment_to_ip(ip_object, analyst):
+def add_comment_to_ip_object(ip_object, analyst, content):
     """
     Add a new comment indicating the ASN was wrong.
     Based on comment_add() in crits/crits/comments/handlers.py.
     :param ip_object: The top-level IP object to add the comment to.
     :type ip_object: IP
-    :param analyst: The user adding the comment.
+    :param analyst: The name of the user adding the comment.
     :type analyst: str
+    :param content: The content to use for the content object of the IP object.
+    :type content: str
     :returns: (nothing)
     """
     comment = Comment()
-    comment.comment = "Error: Incorrect ASN given to IP. Corrected by analysis."
+    comment.comment = content
     comment.parse_comment()
     comment.set_parent_object('IP', ip_object.id)
     comment.analyst = analyst
@@ -243,32 +271,14 @@ def add_flag_comment_to_ip(ip_object, analyst):
                                     analyst=analyst)
     comment.source = [source]
     comment.save(username=analyst)
-    #comment.reload()
-    #comment.comment_to_html()
     return
 
-def update_ip_object_as_name(ip_object, as_name, username):
-    if not as_name:
-        return
-    # First, remove old AS Name object(s).
-    # To prevent skipping objects in ip_object.obj due to removing objects, store list of AS Names to remove.
-    old_as_names = []
-    for o in ip_object.obj:
-        if o.object_type == ObjectTypes.AS_NAME:
-            old_as_names.append(o.value)
-    for old_as_name in old_as_names:
-        ip_object.remove_object(ObjectTypes.AS_NAME, old_as_name)
-
-    # add new AS Name object
-    ip_object.add_object(ObjectTypes.AS_NAME, as_name, 'analysis_autofill', '', '', username)
-    return
-
-def add_source_to_ip(ip_object, username, source_name):
+def add_source_to_ip(ip_object, analyst, source_name):
     """
     Adds a new source to the IP object's list of sources, if it is not already there.
     Assumes that source exists in source database.
     :param ip_object:
-    :param username:
+    :param analyst: The name of the user adding the source.
     :return:
     """
     if not source_name:
@@ -279,88 +289,60 @@ def add_source_to_ip(ip_object, username, source_name):
             is_source_in_ip_sources = True
             break
     if not is_source_in_ip_sources:
-        source = create_embedded_source(source_name, analyst=username)
+        source = create_embedded_source(source_name, analyst=analyst)
         if source:
             ip_object.add_source(source)
             # Add a brand new releasability, and add an instance to that releasability.
-            add_releasability('IP', ip_object.id, source.name, username)
-            add_releasability_instance('IP', ip_object.id, source.name, username)
-
+            add_releasability('IP', ip_object.id, source.name, analyst)
+            add_releasability_instance('IP', ip_object.id, source.name, analyst)
+    return
 
 ##### GeoIP Lookup #####
 
-def check_GeoIP_data(ip_object, username):
-    input_result = get_coordinates_from_ip_object(ip_object)
-    if input_result:
-        input_latitude, input_longitude = input_result
-        # These two variables are what will be stored in the database, so they must be strings.
-        correct_latitude = str(input_latitude)
-        correct_longitude = str(input_longitude)
-
-        lookup_result = get_coordinates_from_database(ip_object.ip)
-        if lookup_result:
-            lookup_latitude, lookup_longitude = lookup_result
+def amend_geoip_data(ip_object, analyst):
+    lookup_result = geoip_lookup.get_coordinates(ip_object.ip)
+    if lookup_result:
+        lookup_latitude, lookup_longitude = lookup_result
+        input_result = get_coordinates_from_ip_object(ip_object)
+        if input_result:
+            input_latitude, input_longitude = input_result
             is_near_enough = (near_enough(input_latitude, lookup_latitude) and near_enough(input_longitude, lookup_longitude))
-            if not is_near_enough:
-                coordinates_string = str(lookup_latitude) + "," + str(lookup_longitude)
-                add_geoip_comment_to_ip(ip_object, username, coordinates_string)
-                correct_latitude = str(lookup_latitude)
-                correct_longitude = str(lookup_longitude)
-
-        # NOTE: username required to modify objects in ip_object.
-        ip_object.add_object(ObjectTypes.LATITUDE, correct_latitude, 'analysis_autofill', '', '', username)
-        ip_object.add_object(ObjectTypes.LONGITUDE, correct_longitude, 'analysis_autofill', '', '', username)
-        ip_object.save(username=username)
+            if is_near_enough:
+                # values in collection match lookup, so we don't need to change anything
+                return
+            ip_object.remove_object(ObjectTypes.LATITUDE, str(input_latitude))
+            ip_object.remove_object(ObjectTypes.LONGITUDE, str(input_longitude))
+        # TODO: I forget why I still add an error comment when input_result is null.
+        coordinates_string = str(lookup_latitude) + "," + str(lookup_longitude)
+        incorrect_coordinates_comment = "Error: Incorrect GeoIP coordinates. Correct coordinates: " + coordinates_string + "."
+        add_comment_to_ip_object(ip_object, analyst, incorrect_coordinates_comment)
+        ip_object.add_object(ObjectTypes.LATITUDE, str(lookup_latitude), get_user_organization(analyst), '', '', analyst)
+        ip_object.add_object(ObjectTypes.LONGITUDE, str(lookup_longitude), get_user_organization(analyst), '', '', analyst)
     return
 
 def get_coordinates_from_ip_object(ip_object):
+    """
+    Get coordinates saved to the IP object in the IP collection.
+    :param ip_object: 
+    :return: 
+    """
+    latitude = None
+    longitude = None
     for o in ip_object.obj:
-        if o.object_type == ObjectTypes.EXTRA:
-            extra = o.value
-            numbers = extra.split(",", 2)
-            if len(numbers) < 2:
-                return None
+        if o.object_type == ObjectTypes.LATITUDE:
             try:
-                input_latitude = float(numbers[0])
-                input_longitude = float(numbers[1])
+                latitude = float(o.value)
             except (TypeError, ValueError):
                 return None
-            return (input_latitude, input_longitude)
+        if o.object_type == ObjectTypes.LONGITUDE:
+            try:
+                longitude = float(o.value)
+            except (TypeError, ValueError):
+                return None
+        if (latitude is not None) and (longitude is not None):
+            return (latitude, longitude)
     return None
-
-def get_coordinates_from_database(ip_address):
-    reader = geoip2.database.Reader('/usr/local/share/GeoIP/GeoLite2-City.mmdb')
-    try:
-        response = reader.city(ip_address)
-    except geoip2.errors.AddressNotFoundError:
-        return None
-    if not (response and response.location
-            and response.location.latitude and response.location.longitude):
-        # Doesn't make sense to return result that is missing latitude and/or longitude
-        return None
-    return (response.location.latitude, response.location.longitude)
 
 def near_enough(x, y):
     max_diff = 0.0001
     return abs(x - y) < max_diff
-
-def add_geoip_comment_to_ip(ip_object, analyst, coordinates_string):
-    """
-    Add a new comment indicating the latitude and longitude was wrong.
-    Based on comment_add() in crits/crits/comments/handlers.py.
-    :param ip_object: The top-level IP object to add the comment to.
-    :type ip_object: IP
-    :param analyst: The user adding the comment.
-    :type analyst: str
-    :returns: (nothing)
-    """
-    comment = Comment()
-    comment.comment = "Error: Incorrect GeoIP coordinates. Correct coordinates: " + coordinates_string + "."
-    comment.parse_comment()
-    comment.set_parent_object('IP', ip_object.id)
-    comment.analyst = analyst
-    source = create_embedded_source(name=get_user_organization(analyst),
-                                    analyst=analyst)
-    comment.source = [source]
-    comment.save(username=analyst)
-    return

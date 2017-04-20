@@ -21,12 +21,6 @@ class DataDistributionResource(CRITsAPIResource):
     def __init__(self):
         super(DataDistributionResource, self).__init__()
         self.request = None
-        # Set parameters of GET call internally
-        #self.limit = 20
-        #self.sortBy = ''
-        #self.sortOrder = ''
-        #self.createdSince = ''
-        #self.modifiedSince = ''
         self.aggregation_pipeline = []
         self.output_field_to_object_type = {
             'numberOfTimesSeen': ObjectTypes.NUMBER_OF_TIMES_SEEN,
@@ -41,6 +35,13 @@ class DataDistributionResource(CRITsAPIResource):
             'Country': ObjectTypes.COUNTRY,
             'attackTypes': ObjectTypes.ATTACK_TYPE
         }
+        self.integer_fields = [
+            'numberOfTimesSeen',
+            'totalBPS',
+            'totalPPS',
+            'peakBPS',
+            'peakPPS'
+        ]
         self.variable_name_to_output_field = {
             'ip_address': 'IPaddress',
             'number_of_times': 'numberOfTimesSeen',
@@ -84,6 +85,12 @@ class DataDistributionResource(CRITsAPIResource):
         for key in bundle.data:
             if not (bundle.data[key] and key in all_output_fields):
                 fields_to_remove.append(key)
+            elif key in self.integer_fields:
+                try:
+                    int_value = int(bundle.data[key])
+                    bundle.data[key] = int_value
+                except (TypeError, ValueError):
+                    continue
         # Remove fields that have null values.
         for field in fields_to_remove:
             del bundle.data[field]
@@ -117,7 +124,8 @@ class DataDistributionResource(CRITsAPIResource):
         self._add_modified_filter_to_pipeline()
         self._add_sort_to_pipeline()
         self._add_limit_to_pipeline()
-        value = IP.objects.filter().aggregate(*self.aggregation_pipeline, useCursor=False)
+        collation = {'locale': 'en_US_POSIX', 'numericOrdering': True}
+        value = IP.objects.filter().aggregate(*self.aggregation_pipeline, collation=collation, useCursor=False)
         return value
 
     # Filter on entries with at least one source in the list of sources the user has access to.
@@ -162,7 +170,7 @@ class DataDistributionResource(CRITsAPIResource):
                     created_since_datetime = datetime.strptime(created_since, "%Y-%m-%d")
                 except (ValueError):
                     raise ValueError("'createdSince' time not a properly formatted ISO string.")
-            match = { '$match': {'firstTimeSeen': {'$gte': created_since_datetime}} }
+            match = { '$match': {'firstTimeSeen': {'$gte': created_since}} }
             self.aggregation_pipeline.append(match)
 
     # Filter on entries modified since the 'modifiedSince' time.
@@ -176,7 +184,7 @@ class DataDistributionResource(CRITsAPIResource):
                     modified_since_datetime = datetime.strptime(modified_since, "%Y-%m-%d")
                 except (ValueError):
                     raise ValueError("'modifiedSince' time not a properly formatted ISO string.")
-            match = { '$match': {'lastTimeSeen': {'$gte': modified_since_datetime}} }
+            match = { '$match': {'lastTimeSeen': {'$gte': modified_since}} }
             self.aggregation_pipeline.append(match)
 
     def _add_sort_to_pipeline(self):
@@ -194,10 +202,8 @@ class DataDistributionResource(CRITsAPIResource):
         input_limit = self.request.GET.get('limit', '20')
         try:
             limit_integer = int(input_limit)
-            return limit_integer
         except (TypeError, ValueError):
             raise ValueError("'limit' field set to invalid value. Must be integer.")
-
         limit = { '$limit': limit_integer }
         self.aggregation_pipeline.append(limit)
 
