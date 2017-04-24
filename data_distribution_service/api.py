@@ -125,7 +125,7 @@ class DataDistributionResource(CRITsAPIResource):
         self._add_sort_to_pipeline()
         self._add_limit_to_pipeline()
         collation = {'locale': 'en_US_POSIX', 'numericOrdering': True}
-        value = IP.objects.filter().aggregate(*self.aggregation_pipeline, collation=collation, useCursor=False)
+        value = IP.objects.aggregate(*self.aggregation_pipeline, collation=collation, useCursor=False)
         return value
 
     # Filter on entries with at least one source in the list of sources the user has access to.

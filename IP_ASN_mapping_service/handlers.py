@@ -279,22 +279,21 @@ def add_source_to_ip(ip_object, analyst, source_name):
     Assumes that source exists in source database.
     :param ip_object:
     :param analyst: The name of the user adding the source.
+    :param source_name:
     :return:
     """
     if not source_name:
         return
-    is_source_in_ip_sources = False
     for src in ip_object.source:
         if src.name == source_name:
-            is_source_in_ip_sources = True
-            break
-    if not is_source_in_ip_sources:
-        source = create_embedded_source(source_name, analyst=analyst)
-        if source:
-            ip_object.add_source(source)
-            # Add a brand new releasability, and add an instance to that releasability.
-            add_releasability('IP', ip_object.id, source.name, analyst)
-            add_releasability_instance('IP', ip_object.id, source.name, analyst)
+            # Source already in IP's sources
+            return
+    source = create_embedded_source(source_name, analyst=analyst)
+    if source:
+        ip_object.add_source(source)
+        # Add a brand new releasability, and add an instance to that releasability.
+        add_releasability('IP', ip_object.id, source.name, analyst)
+        add_releasability_instance('IP', ip_object.id, source.name, analyst)
     return
 
 ##### GeoIP Lookup #####
