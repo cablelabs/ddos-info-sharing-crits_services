@@ -1,6 +1,5 @@
 import os
 import pymongo
-import re
 import signal
 import time
 from bson.timestamp import Timestamp
@@ -8,7 +7,7 @@ from multiprocessing import Process
 
 from crits.comments.comment import Comment
 from crits.core.crits_mongoengine import create_embedded_source
-from crits.core.handlers import add_releasability, add_releasability_instance, add_new_source
+from crits.core.handlers import add_releasability, add_releasability_instance
 from crits.core.source_access import SourceAccess
 from crits.core.user_tools import get_user_organization
 from crits.ips.ip import IP
@@ -17,7 +16,6 @@ from crits.vocabulary.status import Status
 
 from GeoIPLookup import geoip_lookup
 from ASNLookup.ASNLookupData import ASNLookupData
-from ASNLookup.ip_source_name_lookup import get_designated_source_name, get_primary_source_name
 
 # global variables
 process = None
@@ -91,22 +89,17 @@ def rerun_service():
                 'html': ''}
 
 def analyze_ip_object(ip_object):
-    analyst = "analysis_autofill"
-    asn_lookup_data = ASNLookupData(ip_object.ip, 'IPv4 Address')
+    asn_lookup_data = ASNLookupData(ip_object.ip)
     as_number = asn_lookup_data.as_number
-    existing_source_name = get_name_of_source_with_as_number(as_number)
-    if existing_source_name:
-        designated_source_name = existing_source_name
-    else:
-        designated_source_name = get_designated_source_name(asn_lookup_data.as_name, asn_lookup_data.isp)
-        primary_source_name = get_primary_source_name(designated_source_name)
-        update_sources(as_number, asn_lookup_data.country_code, primary_source_name, designated_source_name)
-    update_ip_object(ip_object, analyst, as_number, designated_source_name)
+    as_name = asn_lookup_data.as_name
+    source_name = get_name_of_source_with_as_number(as_number)
+    update_ip_object(ip_object, as_number, as_name, source_name)
 
 def get_name_of_source_with_as_number(as_number):
     """
     Return the name of a source, if any, that has the input AS Number.
-    :param as_number: string
+    :param as_number:
+    :type as_number: string
     :return: string, representing the name of the source with the input AS Number, or None if no such source exists
     """
     if as_number:
@@ -119,88 +112,26 @@ def get_name_of_source_with_as_number(as_number):
             return source.name
     return None
 
-def update_sources(as_number, country_code, primary_source_name, designated_source_name):
-    """
-    Update primary and designated sources that will be added to whose name is AS Name of input data, or add this source if it does not yet exist.
-    :return:
-    """
-    designated_source = get_source_object_from_name(designated_source_name)
-    if not designated_source:
-        # Create new source whose name is designated_source_name.
-        add_new_source(designated_source_name, as_number, '')
-        designated_source = get_source_object_from_name(designated_source_name)
-    # Hopefully source exists by this point, but an error may have occurred when creating a new source.
-    if designated_source:
-        try:
-            as_number_int = int(as_number)
-            if as_number_int not in designated_source.asns:
-                designated_source.asns.append(as_number_int)
-        except (TypeError, ValueError):
-            pass
-        designated_source.country_code = country_code
-        if designated_source_name != primary_source_name:
-            primary_source = get_source_object_from_name(primary_source_name)
-            if not primary_source:
-                add_new_source(primary_source_name, '', '')
-                primary_source = get_source_object_from_name(primary_source_name)
-            # Hopefully source exists by this point, but an error may have occurred when creating a new source.
-            if primary_source:
-                merge_aliases(designated_source, primary_source)
-                primary_source.save()
-        designated_source.save()
-    return
-
-# TODO: will this handle the case where there is no such source (i.e. will it return None/Null?)?
-def get_source_object_from_name(source_name):
-    """
-    Return source object whose name is source_name.
-    :param source_name: string
-    :return: source object, or None if no source has name source_name
-    """
-    sources = SourceAccess.objects(name=source_name).first()
-    return sources
-
-def merge_aliases(source_one, source_two):
-    """
-    Combine aliases of both input sources, including themselves, and set aliases of both sources to the combined list.
-    :param source_one: 
-    :param source_two: 
-    :return: (nothing)
-    """
-    update_first_source_aliases_with_second_source_aliases(source_one, source_two)
-    update_first_source_aliases_with_second_source_aliases(source_two, source_one)
-    return
-
-def update_first_source_aliases_with_second_source_aliases(first_source, second_source):
-    """
-    Add Second Source, and all aliases of Second Source, to aliases of First Source.
-    :param first_source: 
-    :param second_source: 
-    :return: (nothing)
-    """
-    if second_source.name not in first_source.aliases:
-        first_source.aliases.append(second_source.name)
-    for alias in second_source.aliases:
-        if alias != first_source.name and alias not in first_source.aliases:
-            first_source.aliases.append(alias)
-    return
-
 ##### Updating IP Object #####
 
-def update_ip_object(ip_object, analyst, as_number, designated_source_name):
+def update_ip_object(ip_object, as_number, as_name, source_name):
     """
     Update the given IP object, making sure that the IP's AS Number matches the input, and the designated source is a 
     source of the IP.
-    :param ip_object: 
-    :param analyst: The name of the user through which new objects will be added to the IP object.
+    :param ip_object:
     :param as_number: The AS Number that our ASN Service found.
     :type as_number: string
+    :param as_name:
+    :type as_name: string
+    :param source_name:
+    :type source_name: string
     :param designated_source_name: 
     :return: 
     """
+    analyst = "analysis_autofill"
     amend_as_number(ip_object, analyst, as_number)
-    update_ip_object_sub_object(ip_object, analyst, ObjectTypes.AS_NAME, designated_source_name)
-    add_source_to_ip(ip_object, analyst, designated_source_name)
+    update_ip_object_sub_object(ip_object, analyst, ObjectTypes.AS_NAME, as_name)
+    add_source_to_ip(ip_object, analyst, source_name)
     amend_geoip_data(ip_object, analyst)
     ip_object.set_status(Status.ANALYZED)
     # TODO: Potential looping problem because saving data to IP will add another entry to the audit_log.
@@ -215,7 +146,7 @@ def amend_as_number(ip_object, analyst, as_number):
             incorrect_asn_comment = "Error: Incorrect ASN given to IP. Corrected by analysis."
             add_comment_to_ip_object(ip_object, analyst, incorrect_asn_comment)
         else:
-            null_asn_comment = "Warning: No AS Number found in database, but user gave value '" + current_as_number + "'."
+            null_asn_comment = "Warning: ASN lookup did not produce AS Number, but user gave value '" + current_as_number + "'."
             add_comment_to_ip_object(ip_object, analyst, null_asn_comment)
 
 def get_as_number_from_ip_object(ip_object):

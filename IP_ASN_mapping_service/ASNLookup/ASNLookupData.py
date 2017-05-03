@@ -1,4 +1,5 @@
-from dns_asn_lookup import get_asn_data
+from ipwhois_asn_lookup import get_asn_data_from_ipwhois
+from rdap_asn_lookup import get_as_name_from_rdap_using_as_number
 
 class ASNLookupData:
     """
@@ -7,20 +8,20 @@ class ASNLookupData:
     self.as_number: AS Number of region IP resides in.
     self.as_name: AS Name of source that owns the IP.
     self.country_code: Country Code of region IP resides in.
-    self.domain: Domain
-    self.isp: ISP
     """
-    def __init__(self, ip, ip_type):
+    def __init__(self, ip_address):
         """
         :param ip: IP address to look for.
         :type ip: string
-        :param ip_type: The type of the IP address to look for. If input is not 'IPv4 Address', assumes IP is IPv6.
-        :type ip_type: string
         """
+        if not isinstance(ip_address, basestring):
+            raise TypeError("Parameter 'ip_address' must be a string.")
         # Initialize object using data from DNS Lookup.
-        output = get_asn_data(ip, ip_type)
-        self.as_number = output['as_number']
-        self.as_name = output['as_name']
-        self.country_code = output['country_code']
-        self.domain = output['domain']
-        self.isp = output['isp']
+        try:
+            asn_data = get_asn_data_from_ipwhois(ip_address)
+            self.as_number = asn_data['as_number']
+            self.as_name = get_as_name_from_rdap_using_as_number(self.as_number)
+        except Exception as e:
+            self.as_number = None
+            self.as_name = None
+        #self.country_code = asn_data['country_code']
