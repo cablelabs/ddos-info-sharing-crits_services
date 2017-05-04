@@ -5,7 +5,7 @@ def get_geoip_lookup_data_from_geoip2(ip_address):
     Get all relevant GeoIP data regarding IP address from local GeoIP database.
     :param ip_address:
     :type ip_address: string
-    :return: dict
+    :return: dict, which includes the following fields: 'city', 'country', 'latitude', 'longitude', 'state'
     """
     database_location = '/usr/local/share/GeoIP/GeoLite2-City.mmdb'
     reader = geoip2.database.Reader(database_location)

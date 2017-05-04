@@ -52,9 +52,10 @@ def add_or_update_ip_object(analyst, source, ip_object):
     :returns: (nothing.)
     """
     ip = ip_object.get('IPaddress', None)
-    ip_type = ip_address_type(ip)
-    if not ip or not ip_type:
-        raise Exception('Must provide an IP, IP Type, and Source.')
+    try:
+        ip_type = ip_address_type(ip)
+    except ValueError:
+        raise
 
     # New IP object properties, arranged in the order they appear in our schema.
     additional_fields = {}

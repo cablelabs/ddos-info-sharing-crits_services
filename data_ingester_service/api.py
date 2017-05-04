@@ -1,4 +1,4 @@
-from mongoengine import Document, StringField, ListField, DynamicField, DictField
+from mongoengine import Document, StringField, DictField
 from tastypie import authorization
 from tastypie.authentication import MultiAuthentication
 
@@ -22,8 +22,6 @@ class DataIngesterObject(CritsDocument, Document):
 class DataIngesterResource(CRITsAPIResource):
     """
     Class to handle everything related to the Data Ingester API.
-
-    Currently supports POST.
     """
 
     class Meta:
@@ -104,18 +102,18 @@ class DataIngesterResource(CRITsAPIResource):
         try:
             source = bundle.data.get('ProviderName')
         except Exception:
-            response['message'] = "Error: Problem getting 'dis-data' field."
+            response['message'] = "Error occurred while getting 'ProviderName' field."
             self.crits_response(response, status=500)
             return
         if source is None:
-            response['message'] = "Error: 'ProviderName' missing."
+            response['message'] = "Error: 'ProviderName' field missing from input."
             self.crits_response(response, status=400)
             return
 
         try:
             sources = user_sources(analyst)
         except Exception:
-            response['message'] = "Error: Problem getting user sources."
+            response['message'] = "Error occurred while getting user's sources."
             self.crits_response(response, status=500)
             return
         if source not in sources:
@@ -126,17 +124,17 @@ class DataIngesterResource(CRITsAPIResource):
         try:
             ip_objects = bundle.data.get('dis-data', None)
         except Exception:
-            response['message'] = "Error: Problem getting 'dis-data' field."
+            response['message'] = "Error occurred while getting 'dis-data' field."
             self.crits_response(response, status=500)
             return
         if ip_objects is None:
-            response['message'] = "Error: 'dis-data' missing."
+            response['message'] = "Error: 'dis-data' field missing from input."
             self.crits_response(response, status=400)
             return
 
         try:
             add_or_update_ip_object_group(analyst, source, ip_objects)
-        except Exception, error:
+        except Exception as error:
             response['message'] = 'Error while saving IP data: ' + error.message
             self.crits_response(response, status=500)
             return
