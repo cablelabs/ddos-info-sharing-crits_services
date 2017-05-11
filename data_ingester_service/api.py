@@ -1,23 +1,12 @@
-from mongoengine import Document, StringField, DictField
 from tastypie import authorization
 from tastypie.authentication import MultiAuthentication
 
 from crits.core.api import CRITsApiKeyAuthentication, CRITsSessionAuthentication
 from crits.core.api import CRITsSerializer, CRITsAPIResource
-from crits.core.crits_mongoengine import CritsDocument
-from crits.core.user_tools import get_user_organization, user_sources
-from crits.ips.ip import IP
-from crits.vocabulary.objects import ObjectTypes
+from crits.core.user_tools import user_sources
 
 from handlers import add_or_update_ip_object_group
 
-
-class DataIngesterObject(CritsDocument, Document):
-    """
-    Class to store data if we ever decide to make this support GET
-    """
-    provider_name = StringField()
-    dis_data = DictField()
 
 class DataIngesterResource(CRITsAPIResource):
     """
@@ -25,62 +14,13 @@ class DataIngesterResource(CRITsAPIResource):
     """
 
     class Meta:
-        object_class = DataIngesterObject
-        allowed_methods = ('get', 'post')
+        allowed_methods = ('post')
         resource_name = "data_ingester_resource"
         collection_name = "dis-data"
         authentication = MultiAuthentication(CRITsApiKeyAuthentication(),
                                              CRITsSessionAuthentication())
         authorization = authorization.Authorization()
         serializer = CRITsSerializer()
-
-    def alter_list_data_to_serialize(self, request, data):
-        del data['meta']
-        username = request.GET.get('username', '')
-        source_name = get_user_organization(username)
-        data['SourceName'] = source_name
-        return data
-
-    def obj_get_list(self, request=None, **kwargs):
-        """
-        Handles GET requests and returns a list of data
-
-        :param request:
-        :param kwargs:
-        :return: List of objects
-        """
-        ip_object = IP.objects().first()
-        obj = DataIngesterObject()
-        for s in ip_object.source:
-            obj.provider_name = str(s.name)
-
-        obj.dis_data['IPaddress'] = ip_object.ip
-
-        for o in ip_object.obj:
-            if o.object_type == ObjectTypes.AS_NUMBER:
-                obj.dis_data['SourceASN'] = o.value
-            elif o.object_type == ObjectTypes.EXTRA:
-                obj.dis_data['Extra'] = o.value
-            elif o.object_type == ObjectTypes.ATTACK_TYPE:
-                obj.dis_data['AttackType'] = o.value
-            elif o.object_type == ObjectTypes.CITY:
-                obj.dis_data['City'] = o.value
-            elif o.object_type == ObjectTypes.COUNTRY:
-                obj.dis_data['Country'] = o.value
-            elif o.object_type == ObjectTypes.NUMBER_OF_TIMES_SEEN:
-                obj.dis_data['NumberOfTimes'] = o.value
-            elif o.object_type == ObjectTypes.STATE:
-                obj.dis_data['State'] = o.value
-            elif o.object_type == ObjectTypes.TIME_FIRST_SEEN:
-                obj.dis_data['FirstSeen'] = o.value
-            elif o.object_type == ObjectTypes.TIME_LAST_SEEN:
-                obj.dis_data['LastSeen'] = o.value
-            elif o.object_type == ObjectTypes.TOTAL_BYTES_PER_SECOND:
-                obj.dis_data['TotalBPS'] = o.value
-            elif o.object_type == ObjectTypes.TOTAL_PACKETS_PER_SECOND:
-                obj.dis_data['TotalPPS'] = o.value
-
-        return [obj]
 
     def obj_create(self, bundle, **kwargs):
         """
