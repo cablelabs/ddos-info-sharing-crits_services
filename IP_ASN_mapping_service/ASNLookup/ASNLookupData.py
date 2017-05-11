@@ -16,12 +16,16 @@ class ASNLookupData:
         """
         if not isinstance(ip_address, basestring):
             raise TypeError("Parameter 'ip_address' must be a string.")
+        self.as_number = None
+        self.as_name = None
         # Initialize object using data from DNS Lookup.
         try:
             asn_data = get_asn_data_from_ipwhois(ip_address)
+        except Exception:
+            return
+        if asn_data and 'as_number' in asn_data:
             self.as_number = asn_data['as_number']
-            self.as_name = get_as_name_from_rdap_using_as_number(self.as_number)
-        except Exception as e:
-            self.as_number = None
-            self.as_name = None
-        #self.country_code = asn_data['country_code']
+            try:
+                self.as_name = get_as_name_from_rdap_using_as_number(self.as_number)
+            except Exception:
+                return
