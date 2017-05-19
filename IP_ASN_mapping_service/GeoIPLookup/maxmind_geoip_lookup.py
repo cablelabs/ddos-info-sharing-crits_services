@@ -22,7 +22,7 @@ def get_geoip_lookup_data_from_geoip2(ip_address):
         return lookup_data
     if response:
         if response.location:
-            if response.location.latidude:
+            if response.location.latitude:
                 lookup_data['latitude'] = response.location.latitude
             if response.location.longitude:
                 lookup_data['longitude'] = response.location.longitude

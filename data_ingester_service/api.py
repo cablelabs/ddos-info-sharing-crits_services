@@ -1,3 +1,5 @@
+import json
+from jsonschema import validate, FormatChecker, ValidationError
 from tastypie import authorization
 from tastypie.authentication import MultiAuthentication
 
@@ -12,6 +14,11 @@ class DataIngesterResource(CRITsAPIResource):
     """
     Class to handle everything related to the Data Ingester API.
     """
+
+    def __init__(self):
+        super(DataIngesterResource, self).__init__()
+        schema_file = open('/home/infosharing/git/crits_services/data_ingester_service/Data Ingester Payload Schema.json', 'r')
+        self.input_schema = json.load(schema_file)
 
     class Meta:
         allowed_methods = ('post')
@@ -32,50 +39,48 @@ class DataIngesterResource(CRITsAPIResource):
         :param kwargs: (Not used.)
         :returns: (nothing.)
         """
-
         response = {
             'message': "Error!",
             'return_code': 1
         }
-
-        analyst = bundle.request.user.username
         try:
-            source = bundle.data.get('ProviderName')
-        except Exception:
-            response['message'] = "Error occurred while getting 'ProviderName' field."
-            self.crits_response(response, status=500)
-            return
-        if source is None:
-            response['message'] = "Error: 'ProviderName' field missing from input."
+            validate(bundle.data, self.input_schema, format_checker=FormatChecker())
+        except ValidationError as e:
+            response['message'] = "Validation Error: " + e.message
             self.crits_response(response, status=400)
             return
+        except Exception as e:
+            response['message'] = "Error during schema validation: " + e.message
+            self.crits_response(response, status=500)
+            return
 
         try:
+            source = bundle.data.get('ProviderName')
+        except Exception as e:
+            response['message'] = "Error getting 'ProviderName': " + e.message
+            self.crits_response(response, status=500)
+            return
+        try:
+            analyst = bundle.request.user.username
             sources = user_sources(analyst)
-        except Exception:
-            response['message'] = "Error occurred while getting user's sources."
+        except Exception as e:
+            response['message'] = "Error getting user's sources: " + e.message
             self.crits_response(response, status=500)
             return
         if source not in sources:
             response['message'] = "Error: User not allowed to publish to source '" + str(source) + "'."
             self.crits_response(response, status=403)
             return
-
         try:
             ip_objects = bundle.data.get('dis-data', None)
-        except Exception:
-            response['message'] = "Error occurred while getting 'dis-data' field."
+        except Exception as e:
+            response['message'] = "Error getting 'dis-data': " + e.message
             self.crits_response(response, status=500)
             return
-        if ip_objects is None:
-            response['message'] = "Error: 'dis-data' field missing from input."
-            self.crits_response(response, status=400)
-            return
-
         try:
             add_or_update_ip_object_group(analyst, source, ip_objects)
-        except Exception as error:
-            response['message'] = 'Error while saving IP data: ' + error.message
+        except Exception as e:
+            response['message'] = 'Error saving IP data: ' + e.message
             self.crits_response(response, status=500)
             return
 

@@ -5,12 +5,10 @@ import time
 from bson.timestamp import Timestamp
 from multiprocessing import Process
 
-from crits.core.source_access import SourceAccess
 from crits.ips.ip import IP
 from crits.vocabulary.status import Status
 
-from update_database import update_ip_object
-from ASNLookup.ASNLookupData import ASNLookupData
+from update_database import analyze_and_update_ip_object
 
 # Global variables
 process = None
@@ -65,8 +63,8 @@ def process_from_oplog():
                     timestamp = doc['ts']
                     object_id = doc['o']['target_id']
                     ip_object = IP.objects(id=object_id).first()
-                    if (ip_object and ip_object.status != Status.ANALYZED):
-                        analyze_ip_object(ip_object)
+                    if ip_object and ip_object.status != Status.ANALYZED:
+                        analyze_and_update_ip_object(ip_object)
                 time.sleep(1)
         except Exception as e:
             print("Error while processing oplog: " + e.message)
@@ -81,43 +79,9 @@ def rerun_service():
     """
     try:
         for ip_object in IP.objects:
-            analyze_ip_object(ip_object)
+            analyze_and_update_ip_object(ip_object)
         return {'success': True,
                 'html': ''}
     except Exception:
         return {'success': False,
                 'html': ''}
-
-
-def analyze_ip_object(ip_object):
-    """
-    Perform various analysis steps on the input IP object
-    
-    :param ip_object: The IP object to analyze.
-    :type ip_object: IP
-    :return: (nothing)
-    """
-    asn_lookup_data = ASNLookupData(ip_object.ip)
-    as_number = asn_lookup_data.as_number
-    as_name = asn_lookup_data.as_name
-    source_name = get_name_of_source_with_as_number(as_number)
-    update_ip_object(ip_object, as_number, as_name, source_name)
-
-
-def get_name_of_source_with_as_number(as_number):
-    """
-    Return the name of a source, if any, that has the input AS Number.
-    
-    :param as_number: The number such that the source whose name we return contains this number.
-    :type as_number: str
-    :return: A string representing the name of a source, or None if no valid source exists
-    """
-    if as_number:
-        try:
-            as_number_int = int(as_number)
-        except (TypeError, ValueError):
-            return None
-        source = SourceAccess.objects(asns=as_number_int).first()
-        if source:
-            return source.name
-    return None

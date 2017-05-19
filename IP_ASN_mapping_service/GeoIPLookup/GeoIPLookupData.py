@@ -22,5 +22,5 @@ class GeoIPLookupData:
                 self.longitude = geoip_lookup_data['longitude']
             if 'state' in geoip_lookup_data:
                 self.state = geoip_lookup_data['state']
-        except Exception:
+        except Exception as e:
             pass

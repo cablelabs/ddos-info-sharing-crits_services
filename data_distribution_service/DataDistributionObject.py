@@ -61,8 +61,6 @@ class DataDistributionObject(CritsDocument, Document):
         'numberOfTimesSeen': ObjectTypes.NUMBER_OF_TIMES_SEEN,
         'firstTimeSeen': ObjectTypes.TIME_FIRST_SEEN,
         'lastTimeSeen': ObjectTypes.TIME_LAST_SEEN,
-        'totalBPS': ObjectTypes.TOTAL_BYTES_PER_SECOND,
-        'totalPPS': ObjectTypes.TOTAL_PACKETS_PER_SECOND,
         'peakBPS': '',
         'peakPPS': '',
         'City': ObjectTypes.CITY,

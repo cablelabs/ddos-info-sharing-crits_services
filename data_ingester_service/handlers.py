@@ -7,6 +7,7 @@ from crits.ips.ip import IP
 from crits.ips.handlers import ip_add_update
 from crits.vocabulary.events import EventTypes
 from crits.vocabulary.objects import ObjectTypes
+from crits.vocabulary.relationships import RelationshipTypes
 
 
 def ip_address_type(ip):
@@ -53,7 +54,6 @@ def add_or_update_ip_object(analyst, source, ip_object):
     :param source: The source of the POST message for the IP object.
     :type source: str
     :param ip_object: An IP object to add or update.
-    # TODO: confirm that IP object is dict, or if not find what it is
     :type ip_object: dict, conforming to the data ingester payload schema
     :return: (nothing)
     """
@@ -121,55 +121,67 @@ def save_ip_object_events(analyst, source, ip_address, ip_object_id, events):
     
     :param ip_object: The IP object to update.
     :type ip_object: dict, conforming to the data ingester payload schema
-    :return: 
+    :return: (nothing)
     """
     object_types_to_field_names = {
-        ObjectTypes.TIME_FIRST_SEEN: 'timestamp',
-        ObjectTypes.TOTAL_BYTES_PER_SECOND: 'totalBytesSent',
-        ObjectTypes.TOTAL_PACKETS_PER_SECOND: 'totalPacketsSent',
-        # TODO: 'peakBPS', 'peakPPS'
+        ObjectTypes.TIMESTAMP: 'timestamp',
+        ObjectTypes.TOTAL_BYTES_SENT: 'totalBytesSent',
+        ObjectTypes.TOTAL_PACKETS_SENT: 'totalPacketsSent',
+        ObjectTypes.PEAK_BYTES_PER_SECOND: 'peakBPS',
+        ObjectTypes.PEAK_PACKETS_PER_SECOND: 'peakPPS',
         ObjectTypes.SOURCE_PORT: 'sourcePort',
         ObjectTypes.DEST_PORT: 'destinationPort',
-        ObjectTypes.PROTOCOL: 'protocol',
+        ObjectTypes.PROTOCOL: 'protocol'
     }
     event_counter = 1
     current_time = datetime.now()
     for event in events:
-        if 'timestamp' not in event:
+        timestamp = event.get('timestamp', None)
+        if not timestamp:
             raise Exception("'timestamp' field missing from event.")
-        title = ip_address + "-Event-" + str(event_counter)
+        try:
+            datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%fZ")
+        except ValueError:
+            raise Exception("'timestamp' field is not a properly formatted date-time string.")
+        title = "IP:[" + ip_address + "],Time:[" + current_time.strftime('%Y-%m-%dT%H:%M:%S.%fZ') +\
+                "],Event:" + str(event_counter)
         add_event_result = add_new_event(title=title,
                                          description='',
                                          event_type=EventTypes.DISTRIBUTED_DENIAL_OF_SERVICE,
                                          source=source,
                                          method='',
                                          reference='',
-                                         date=current_time,
+                                         date=datetime.now(),
                                          analyst=analyst,
                                          related_id=ip_object_id,
-                                         related_type='IP'
+                                         related_type='IP',
+                                         relationship_type=RelationshipTypes.RELATED_TO
                                          )
         if not add_event_result['success']:
             raise Exception('Failed to add event for IP object: ' + add_event_result.message)
         new_event_object = Event.objects(id=add_event_result['id']).first()
 
         for object_type, field_name in object_types_to_field_names.items():
-            new_event_object.add_object(object_type=object_type,
-                                        value=event[field_name],
-                                        source=source,
-                                        method='',
-                                        reference='',
-                                        analyst=analyst
-                                        )
-        # Handle Attack Types differently because this is an array field. Add an Attack Type object for each value.
-        attack_types = event['attackTypes']
-        for atk_type in attack_types:
-            new_event_object.add_object(object_type=ObjectTypes.ATTACK_TYPE,
-                                        value=atk_type,
-                                        source=source,
-                                        method='',
-                                        reference='',
-                                        analyst=analyst
-                                        )
+            if field_name in event:
+                new_event_object.add_object(object_type=object_type,
+                                            value=str(event[field_name]),
+                                            source=source,
+                                            method='',
+                                            reference='',
+                                            analyst=analyst
+                                            )
+        if 'attackTypes' in event:
+            # Handle Attack Types differently because this is an array field. Add an Attack Type object for each value.
+            attack_types = event['attackTypes']
+            for atk_type in attack_types:
+                if not isinstance(atk_type, basestring):
+                    raise TypeError("The type of one value in 'attackTypes' is not a string.")
+                new_event_object.add_object(object_type=ObjectTypes.ATTACK_TYPE,
+                                            value=atk_type,
+                                            source=source,
+                                            method='',
+                                            reference='',
+                                            analyst=analyst
+                                            )
         new_event_object.save(username=analyst)
         event_counter += 1

@@ -26,8 +26,6 @@ class DataDistributionResource(CRITsAPIResource):
             'numberOfTimesSeen': ObjectTypes.NUMBER_OF_TIMES_SEEN,
             'firstTimeSeen': ObjectTypes.TIME_FIRST_SEEN,
             'lastTimeSeen': ObjectTypes.TIME_LAST_SEEN,
-            'totalBPS': ObjectTypes.TOTAL_BYTES_PER_SECOND,
-            'totalPPS': ObjectTypes.TOTAL_PACKETS_PER_SECOND,
             'peakBPS': '',
             'peakPPS': '',
             'City': ObjectTypes.CITY,
@@ -206,67 +204,3 @@ class DataDistributionResource(CRITsAPIResource):
             raise ValueError("'limit' field set to invalid value. Must be integer.")
         limit = { '$limit': limit_integer }
         self.aggregation_pipeline.append(limit)
-
-
-    ### DEPRECATED BELOW HERE ###
-
-    def create_data_distribution_object_list(self, ip_entries):
-        object_list = []
-        for ip_entry in ip_entries:
-            new_object = self.create_data_distribution_object_from_ip_entry(ip_entry)
-            object_list.append(new_object)
-        sorted_object_list = self.sorted_data_distribution_object_list(object_list)
-        return sorted_object_list
-
-    def create_data_distribution_object_from_ip_entry(self, ip_entry):
-        """
-        Portions of code in this function are based on get_object_list() in core/api.py
-        """
-        new_object = DataDistributionObject()
-        new_object.ip_address = ip_entry.ip
-        for o in ip_entry.obj:
-            if o.object_type == ObjectTypes.ATTACK_TYPE:
-                new_object.attack_types = o.value
-            elif o.object_type == ObjectTypes.CITY:
-                new_object.city = o.value
-            elif o.object_type == ObjectTypes.COUNTRY:
-                new_object.country = o.value
-            elif o.object_type == ObjectTypes.NUMBER_OF_TIMES_SEEN:
-                new_object.number_of_times = o.value
-            elif o.object_type == ObjectTypes.STATE:
-                new_object.state = o.value
-            elif o.object_type == ObjectTypes.TIME_FIRST_SEEN:
-                new_object.first_seen = o.value
-            elif o.object_type == ObjectTypes.TIME_LAST_SEEN:
-                new_object.last_seen = o.value
-            elif o.object_type == ObjectTypes.TOTAL_BYTES_PER_SECOND:
-                new_object.total_bps = o.value
-            elif o.object_type == ObjectTypes.TOTAL_PACKETS_PER_SECOND:
-                new_object.total_pps = o.value
-        return new_object
-
-    def sorted_data_distribution_object_list(self, object_list):
-        """
-        Sort the input list of objects.
-        :param object_list:
-        :return:
-        """
-        sort_by = self.request.GET.get('sortBy', '')
-        if sort_by:
-            field_name = DataDistributionObject.get_field_name_from_display_name(sort_by)
-            if not field_name:
-                raise ValueError("'sortBy' parameter is not a valid field to sort on.")
-            sort_order = self.request.GET.get('sortOrder', 'desc')
-            is_reverse = (sort_order == 'desc')
-            sorted_object_list = sorted(object_list, key=lambda x: self.get_field_from_object(x, field_name), reverse=is_reverse)
-            return sorted_object_list
-        return object_list
-
-    def get_field_from_object(self, obj, field_name):
-        value = getattr(obj, field_name)
-        try:
-            # TODO: will we ever use float values, or only integer values?
-            int_value = int(value)
-            return int_value
-        except (TypeError, ValueError):
-            return value

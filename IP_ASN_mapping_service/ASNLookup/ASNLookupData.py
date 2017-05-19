@@ -1,6 +1,7 @@
 from ipwhois_asn_lookup import get_asn_data_from_ipwhois
 from rdap_asn_lookup import get_as_name_from_rdap_using_as_number
 
+
 class ASNLookupData:
     """
     Class that stores data from an ASN Lookup. Initialized by doing a DNS Lookup on a particular IP.
