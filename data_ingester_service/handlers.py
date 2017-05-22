@@ -8,6 +8,54 @@ from crits.ips.handlers import ip_add_update
 from crits.vocabulary.events import EventTypes
 from crits.vocabulary.objects import ObjectTypes
 from crits.vocabulary.relationships import RelationshipTypes
+# method 1: search for ip, and if it doesn't exist create it, and search again
+    # method 2: search for ip, and if it doesn't exist create it, and get object ID from result and search on that
+    # method 3: add/update IP regardless, then search on it
+
+def save_ingest_data(analyst, source, ingest_data_entries):
+    """
+    Adds or updates multiple IP objects in the database using the ingest data.
+
+    :param analyst: The analyst who sent the POST message for the IP objects.
+    :type analyst: str
+    :param source: The source of the POST message for the IP objects.
+    :type source: str
+    :param ingest_data_entries: A list of objects with data about attacks from IP addresses.
+    :type ingest_data_entries: list of dictionaries, each conforming to an 'ingestData' object in the definitions of the data ingester payload schema
+    :return: (nothing)
+    """
+    for ingest_data_entry in ingest_data_entries:
+        ip_address = ingest_data_entry.get('IPaddress')
+        add_new_ip_object(analyst, source, ip_address)
+        ip_object = IP.objects(ip=ip_address).first()
+        if not ip_object:
+            raise Exception('IP object not found in database, even though result indicated success.')
+        update_ip_object_additional_fields(analyst, source, ip_object)
+        ip_object_id = ip_object.id
+        save_new_event(analyst, source, ip_address, ip_object_id, ingest_data_entry)
+
+
+def add_new_ip_object(analyst, source, ip_address):
+    """
+    Adds a new IP object, whose IP is the input address, to the database if one doesn't already exist.
+    
+    :param analyst: The analyst who sent the POST message for the IP object.
+    :type analyst: str
+    :param source: The source of the POST message for the IP object.
+    :type source: str
+    :param ip_address: The IP address of the object to add or update.
+    :type ip_address: str
+    :return: (nothing) 
+    """
+    if not isinstance(ip_address, basestring):
+        raise Exception("'ip_address' is not a string.")
+    ip_type = ip_address_type(ip_address)
+    # This will create a new object for the IP if one doesn't already exist.
+    result = ip_add_update(ip_address=ip_address, ip_type=ip_type, source=source, analyst=analyst)
+    if not result['success']:
+        # TODO: Why can I use dot notation on result, even though it's a dictionary?
+        raise Exception(result.message)
+    return
 
 
 def ip_address_type(ip):
@@ -29,63 +77,31 @@ def ip_address_type(ip):
         raise ValueError('IP is not a valid IPv4 or IPv6 address.')
 
 
-def add_or_update_ip_object_group(analyst, source, ip_objects):
+def update_ip_object_additional_fields(analyst, source, ip_object):
     """
-    Adds or updates multiple IP objects to the database.
-
-    :param analyst: The analyst who sent the POST message for the IP objects.
-    :type analyst: str
-    :param source: The source of the POST message for the IP objects.
-    :type source: str
-    :param ip_objects: A group of IP objects to add or update.
-    :type ip_objects: list of dictionaries, each conforming to the data ingester payload schema
-    :return: (nothing)
-    """
-    for ip_obj in ip_objects:
-        add_or_update_ip_object(analyst, source, ip_obj)
-
-
-def add_or_update_ip_object(analyst, source, ip_object):
-    """
-    Adds or updates a single IP object to the database.
+    Updates additional fields for the IP object.
     
     :param analyst: The analyst who sent the POST message for the IP object.
     :type analyst: str
     :param source: The source of the POST message for the IP object.
     :type source: str
-    :param ip_object: An IP object to add or update.
-    :type ip_object: dict, conforming to the data ingester payload schema
+    :param ip_object: The IP object to update.
+    :type ip_object: IP
     :return: (nothing)
     """
-    ip = ip_object.get('IPaddress')
-    if not isinstance(ip, basestring):
-        raise Exception("IPaddress not a string.")
-    ip_type = ip_address_type(ip)
-    result = ip_add_update(ip_address=ip,
-                           ip_type=ip_type,
-                           source=source,
-                           analyst=analyst
-                           )
-    if not result['success']:
-        # TODO: Why can I use dot notation on result, even though it's a dictionary?
-        raise Exception('Failed to add/update IP object: ' + result.message)
-    new_ip_object = IP.objects(ip=ip).first()
-    if not new_ip_object:
-        raise Exception('IP not found in database, even though result indicated success.')
-    add_internal_fields_to_ip_object(analyst, source, new_ip_object)
-    ip_object_id = new_ip_object.id
-    events = ip_object.get('events', None)
-    save_ip_object_events(analyst, source, ip, ip_object_id, events)
-    return
-
-
-def add_internal_fields_to_ip_object(analyst, source, ip_object):
-    is_number_of_times_seen_present = False
-    # is_time_first_seen_present = False
-    # is_time_last_seen_present = False
-    # time_now = ''
+    # This dictionary indicates whether each type of sub-object we want to change was already present in the IP object.
+    is_sub_object_present = {
+        ObjectTypes.TIME_LAST_SEEN: False,
+        ObjectTypes.NUMBER_OF_TIMES_SEEN: False,
+        ObjectTypes.NUMBER_OF_REPORTERS: False
+        # For now, 'reportedBy' field will be calculated in distribution service.
+    }
     for o in ip_object.obj:
-        if o.object_type == ObjectTypes.NUMBER_OF_TIMES_SEEN:
+        if o.object_type == ObjectTypes.TIME_LAST_SEEN:
+            current_time_string = datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+            o.value = current_time_string
+            is_sub_object_present[ObjectTypes.TIME_LAST_SEEN] = True
+        elif o.object_type == ObjectTypes.NUMBER_OF_TIMES_SEEN:
             # Increment number of times seen
             try:
                 int_value = int(o.value)
@@ -93,38 +109,99 @@ def add_internal_fields_to_ip_object(analyst, source, ip_object):
                 o.value = str(int_value)
             except (TypeError, ValueError):
                 pass
-            is_number_of_times_seen_present = True
-            break
-        # elif o.object_type == ObjectTypes.TIME_FIRST_SEEN:
-        #     is_time_first_seen_present = True
-        # elif o.object_type == ObjectTypes.TIME_LAST_SEEN:
-        #     # Update last time seen to current time
-        #     time_now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
-        #     o.value = time_now
-        #     is_time_last_seen_present = True
-
-    # Initialize number of times seen, first time seen, and last time seen if they are not present.
-    if not is_number_of_times_seen_present:
+            is_sub_object_present[ObjectTypes.NUMBER_OF_TIMES_SEEN] = True
+        elif o.object_type == ObjectTypes.NUMBER_OF_REPORTERS:
+            number_of_reporters = get_number_of_reporters(ip_object)
+            o.value = str(number_of_reporters)
+            is_sub_object_present[ObjectTypes.NUMBER_OF_REPORTERS] = True
+    # Create new sub-objects for types that were not present.
+    if not is_sub_object_present[ObjectTypes.TIME_LAST_SEEN]:
+        current_time_string = datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+        ip_object.add_object(ObjectTypes.TIME_LAST_SEEN, current_time_string, source, '', '', analyst)
+    if not is_sub_object_present[ObjectTypes.NUMBER_OF_TIMES_SEEN]:
         ip_object.add_object(ObjectTypes.NUMBER_OF_TIMES_SEEN, '1', source, '', '', analyst)
-    # if not time_now:
-    #     time_now = datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
-    # if not is_time_first_seen_present:
-    #     ip_object.add_object(ObjectTypes.TIME_FIRST_SEEN, time_now, source, '', '', analyst)
-    # if not is_time_last_seen_present:
-    #     ip_object.add_object(ObjectTypes.TIME_LAST_SEEN, time_now, source, '', '', analyst)
+    if not is_sub_object_present[ObjectTypes.NUMBER_OF_REPORTERS]:
+        number_of_reporters = get_number_of_reporters(ip_object)
+        ip_object.add_object(ObjectTypes.NUMBER_OF_REPORTERS, str(number_of_reporters), source, '', '', analyst)
     ip_object.save(username=analyst)
 
 
-def save_ip_object_events(analyst, source, ip_address, ip_object_id, events):
+def get_number_of_reporters(ip_object):
     """
-    Save all events from the input IP object to the Events database, and associate them with the IP object.
+    Return the number of reporters to the IP object, calculated as the number of sources the object has, excluding the
+    source that owns the IP.
     
-    :param ip_object: The IP object to update.
-    :type ip_object: dict, conforming to the data ingester payload schema
+    :param ip_object: The IP object for which we want to find the number of reporters.
+    :type ip_object: IP
+    :return: int
+    """
+    source_aggregation_pipeline = [
+        {'$match': {'ip': ip_object.ip}},
+        {'$project': {'_id': 0, 'source': 1}},
+        {'$unwind': '$source'},
+        {'$group': {'_id': 1, 'sources': {'$push': '$source.name'}}},
+        {'$project': {'_id': 0, 'sources': 1}}
+    ]
+    source_aggregation_result = IP.objects.aggregate(*source_aggregation_pipeline, useCursor=False)
+    source_names = []
+    for item in source_aggregation_result:
+        source_names = item['sources']
+        break
+    releasability_aggregation_pipeline = [
+        {'$match': {'ip': ip_object.ip}},
+        {'$project': {'_id': 0, 'releasability': 1}},
+        {'$unwind': '$source'},
+        {'$group': {'_id': 1, 'names': {'$push': '$source.name'}}},
+        {'$project': {'_id': 0, 'names': 1}}
+    ]
+    releasability_aggregation_result = IP.objects.aggregate(*releasability_aggregation_pipeline, useCursor=False)
+    releasability_names = []
+    for item in releasability_aggregation_result:
+        releasability_names = item['names']
+        break
+    reporters_set = set(source_names).difference(set(releasability_names))
+    return len(reporters_set)
+
+
+def save_new_event(analyst, source, ip_address, ip_object_id, ingest_data_entry):
+    """
+    Save relevant information from ingest data into a new event associated with the IP address.
+    
+    :param analyst: The analyst who sent the POST message for the IP object.
+    :type analyst: str
+    :param source: The source of the POST message for the IP object.
+    :type source: str
+    :param ip_address: The IP address of the object to associate the event with.
+    :type ip_address: str
+    :param ip_object_id: The ID of the IP object associated with the IP address.
+    :type ip_object_id: str
+    :param ingest_data_entry: An object with data about attacks from the IP address.
+    :type ingest_data_entry: dict, conforming to an 'ingestData' object in the definitions of the data ingester payload schema
     :return: (nothing)
     """
+    current_time = datetime.now()
+    title = "IP:[" + ip_address + "],Time:[" + current_time.strftime('%Y-%m-%dT%H:%M:%S.%fZ') + "]"
+    result = add_new_event(title=title,
+                           description='',
+                           event_type=EventTypes.DISTRIBUTED_DENIAL_OF_SERVICE,
+                           source=source,
+                           method='',
+                           reference='',
+                           date=current_time,
+                           analyst=analyst,
+                           related_id=ip_object_id,
+                           related_type='IP',
+                           relationship_type=RelationshipTypes.RELATED_TO
+                           )
+    if not result['success']:
+        raise Exception('Failed to add event for IP object: ' + result.message)
+    event_object = Event.objects(id=result['id']).first()
+
     object_types_to_field_names = {
-        ObjectTypes.TIMESTAMP: 'timestamp',
+        ObjectTypes.ATTACK_START_TIME: 'attackStartTime',
+        ObjectTypes.ATTACK_STOP_TIME: 'attackStopTime',
+        # time recorded will simply be the "created" time, which should be set to 'current_time' from this function
+        # handle attack types differently
         ObjectTypes.TOTAL_BYTES_SENT: 'totalBytesSent',
         ObjectTypes.TOTAL_PACKETS_SENT: 'totalPacketsSent',
         ObjectTypes.PEAK_BYTES_PER_SECOND: 'peakBPS',
@@ -133,55 +210,25 @@ def save_ip_object_events(analyst, source, ip_address, ip_object_id, events):
         ObjectTypes.DEST_PORT: 'destinationPort',
         ObjectTypes.PROTOCOL: 'protocol'
     }
-    event_counter = 1
-    current_time = datetime.now()
-    for event in events:
-        timestamp = event.get('timestamp', None)
-        if not timestamp:
-            raise Exception("'timestamp' field missing from event.")
-        try:
-            datetime.strptime(timestamp, "%Y-%m-%dT%H:%M:%S.%fZ")
-        except ValueError:
-            raise Exception("'timestamp' field is not a properly formatted date-time string.")
-        title = "IP:[" + ip_address + "],Time:[" + current_time.strftime('%Y-%m-%dT%H:%M:%S.%fZ') +\
-                "],Event:" + str(event_counter)
-        add_event_result = add_new_event(title=title,
-                                         description='',
-                                         event_type=EventTypes.DISTRIBUTED_DENIAL_OF_SERVICE,
-                                         source=source,
-                                         method='',
-                                         reference='',
-                                         date=datetime.now(),
-                                         analyst=analyst,
-                                         related_id=ip_object_id,
-                                         related_type='IP',
-                                         relationship_type=RelationshipTypes.RELATED_TO
-                                         )
-        if not add_event_result['success']:
-            raise Exception('Failed to add event for IP object: ' + add_event_result.message)
-        new_event_object = Event.objects(id=add_event_result['id']).first()
-
-        for object_type, field_name in object_types_to_field_names.items():
-            if field_name in event:
-                new_event_object.add_object(object_type=object_type,
-                                            value=str(event[field_name]),
-                                            source=source,
-                                            method='',
-                                            reference='',
-                                            analyst=analyst
-                                            )
-        if 'attackTypes' in event:
-            # Handle Attack Types differently because this is an array field. Add an Attack Type object for each value.
-            attack_types = event['attackTypes']
-            for atk_type in attack_types:
-                if not isinstance(atk_type, basestring):
-                    raise TypeError("The type of one value in 'attackTypes' is not a string.")
-                new_event_object.add_object(object_type=ObjectTypes.ATTACK_TYPE,
-                                            value=atk_type,
-                                            source=source,
-                                            method='',
-                                            reference='',
-                                            analyst=analyst
-                                            )
-        new_event_object.save(username=analyst)
-        event_counter += 1
+    for object_type, field_name in object_types_to_field_names.items():
+        field_value = ingest_data_entry.get(field_name)
+        if field_value:
+            event_object.add_object(object_type=object_type,
+                                    value=str(field_value),
+                                    source=source,
+                                    method='',
+                                    reference='',
+                                    analyst=analyst
+                                    )
+    # Handle Attack Types differently because this is an array field. Add an Attack Type object for each value.
+    attack_types = ingest_data_entry.get('attackTypes')
+    if attack_types:
+        for atk_type in attack_types:
+            event_object.add_object(object_type=ObjectTypes.ATTACK_TYPE,
+                                    value=atk_type,
+                                    source=source,
+                                    method='',
+                                    reference='',
+                                    analyst=analyst
+                                    )
+    event_object.save(username=analyst)

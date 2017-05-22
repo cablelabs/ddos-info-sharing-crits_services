@@ -7,7 +7,7 @@ from crits.core.api import CRITsApiKeyAuthentication, CRITsSessionAuthentication
 from crits.core.api import CRITsSerializer, CRITsAPIResource
 from crits.core.user_tools import user_sources
 
-from handlers import add_or_update_ip_object_group
+from handlers import save_ingest_data
 
 
 class DataIngesterResource(CRITsAPIResource):
@@ -15,19 +15,19 @@ class DataIngesterResource(CRITsAPIResource):
     Class to handle everything related to the Data Ingester API.
     """
 
-    def __init__(self):
-        super(DataIngesterResource, self).__init__()
-        schema_file = open('/home/infosharing/git/crits_services/data_ingester_service/Data Ingester Payload Schema.json', 'r')
-        self.input_schema = json.load(schema_file)
-
     class Meta:
         allowed_methods = ('post')
         resource_name = "data_ingester_resource"
-        collection_name = "dis-data"
         authentication = MultiAuthentication(CRITsApiKeyAuthentication(),
                                              CRITsSessionAuthentication())
         authorization = authorization.Authorization()
         serializer = CRITsSerializer()
+
+    def __init__(self):
+        super(DataIngesterResource, self).__init__()
+        # TODO: Obtain the path to the JSON schema in data ingester service directory.
+        schema_file = open('/home/infosharing/git/crits_services/data_ingester_service/Data Ingester Payload Schema.json', 'r')
+        self.input_schema = json.load(schema_file)
 
     def obj_create(self, bundle, **kwargs):
         """
@@ -40,7 +40,7 @@ class DataIngesterResource(CRITsAPIResource):
         :returns: (nothing.)
         """
         response = {
-            'message': "Error!",
+            'message': '',
             'return_code': 1
         }
         try:
@@ -53,37 +53,20 @@ class DataIngesterResource(CRITsAPIResource):
             response['message'] = "Error during schema validation: " + e.message
             self.crits_response(response, status=500)
             return
-
         try:
             source = bundle.data.get('ProviderName')
-        except Exception as e:
-            response['message'] = "Error getting 'ProviderName': " + e.message
-            self.crits_response(response, status=500)
-            return
-        try:
             analyst = bundle.request.user.username
             sources = user_sources(analyst)
-        except Exception as e:
-            response['message'] = "Error getting user's sources: " + e.message
-            self.crits_response(response, status=500)
-            return
-        if source not in sources:
-            response['message'] = "Error: User not allowed to publish to source '" + str(source) + "'."
-            self.crits_response(response, status=403)
-            return
-        try:
-            ip_objects = bundle.data.get('dis-data', None)
-        except Exception as e:
-            response['message'] = "Error getting 'dis-data': " + e.message
-            self.crits_response(response, status=500)
-            return
-        try:
-            add_or_update_ip_object_group(analyst, source, ip_objects)
+            if source not in sources:
+                response['message'] = "Error: User not allowed to publish to source '" + str(source) + "'."
+                self.crits_response(response, status=403)
+                return
+            ingest_data_entries = bundle.data.get('ingestData', None)
+            save_ingest_data(analyst, source, ingest_data_entries)
         except Exception as e:
             response['message'] = 'Error saving IP data: ' + e.message
             self.crits_response(response, status=500)
             return
-
         response['message'] = 'All data has been saved!'
         response['return_code'] = 0
         self.crits_response(response)
