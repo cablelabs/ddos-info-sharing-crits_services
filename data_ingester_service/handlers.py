@@ -8,9 +8,7 @@ from crits.ips.handlers import ip_add_update
 from crits.vocabulary.events import EventTypes
 from crits.vocabulary.objects import ObjectTypes
 from crits.vocabulary.relationships import RelationshipTypes
-# method 1: search for ip, and if it doesn't exist create it, and search again
-    # method 2: search for ip, and if it doesn't exist create it, and get object ID from result and search on that
-    # method 3: add/update IP regardless, then search on it
+
 
 def save_ingest_data(analyst, source, ingest_data_entries):
     """

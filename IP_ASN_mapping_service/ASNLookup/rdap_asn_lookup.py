@@ -2,6 +2,7 @@ import requests
 
 from ipwhois_asn_lookup import get_as_number_from_ipwhois
 
+
 def get_as_name_from_rdap(ip_address):
     """
     Returns AS Name corresponding to given IP address.
@@ -13,6 +14,7 @@ def get_as_name_from_rdap(ip_address):
     """
     as_number = get_as_number_from_ipwhois(ip_address)
     return get_as_name_from_rdap_using_as_number(as_number)
+
 
 def get_as_name_from_rdap_using_as_number(as_number):
     """

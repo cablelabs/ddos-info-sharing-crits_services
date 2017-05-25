@@ -22,11 +22,11 @@ class ASNLookupData:
         # Initialize object using data from DNS Lookup.
         try:
             asn_data = get_asn_data_from_ipwhois(ip_address)
-        except Exception:
+        except Exception as e:
             return
         if asn_data and 'as_number' in asn_data:
             self.as_number = asn_data['as_number']
             try:
                 self.as_name = get_as_name_from_rdap_using_as_number(self.as_number)
-            except Exception:
+            except Exception as e:
                 return

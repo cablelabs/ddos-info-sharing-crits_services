@@ -1,5 +1,6 @@
 import commands
 
+
 def get_asn_data(ip, ip_type):
     """
     Lookup the AS Number, AS Name, and Country Code for the given IP using a DNS Lookup service.
@@ -33,6 +34,7 @@ def get_asn_data(ip, ip_type):
     output['domain'] = str_minus_extra_characters(output_fields[4])
     output['isp'] = str_minus_extra_characters(output_fields[5])
     return output
+
 
 def str_minus_extra_characters(str):
     return str.strip().replace("\"", "")

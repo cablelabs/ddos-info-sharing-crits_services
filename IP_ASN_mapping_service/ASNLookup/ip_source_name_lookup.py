@@ -1,5 +1,6 @@
 import re
 
+
 def get_designated_source_name(as_name, isp_name):
     """
     Return the name of the primary source for this IP, and the name of the source that we should directly designate to the IP.
@@ -13,6 +14,7 @@ def get_designated_source_name(as_name, isp_name):
         if is_name_resolved(isp_name):
             return isp_name
     return as_name
+
 
 def get_primary_source_name(source_name):
     """
@@ -30,6 +32,7 @@ def get_primary_source_name(source_name):
         # Use prefix before first dash as primary source name.
         return region_specific_names_result.group(1)
     return source_name
+
 
 def is_name_resolved(name):
     """

@@ -53,14 +53,14 @@ class DataIngesterResource(CRITsAPIResource):
             response['message'] = "Error during schema validation: " + e.message
             self.crits_response(response, status=500)
             return
+        source = bundle.data.get('ProviderName')
+        analyst = bundle.request.user.username
+        sources = user_sources(analyst)
+        if source not in sources:
+            response['message'] = "Error: User not allowed to publish to source '" + str(source) + "'."
+            self.crits_response(response, status=403)
+            return
         try:
-            source = bundle.data.get('ProviderName')
-            analyst = bundle.request.user.username
-            sources = user_sources(analyst)
-            if source not in sources:
-                response['message'] = "Error: User not allowed to publish to source '" + str(source) + "'."
-                self.crits_response(response, status=403)
-                return
             ingest_data_entries = bundle.data.get('ingestData', None)
             save_ingest_data(analyst, source, ingest_data_entries)
         except Exception as e:

@@ -1,6 +1,7 @@
 from maxmind_geoip_lookup import get_city_from_geoip2, get_coordinates_from_geoip2,\
     get_country_from_geoip2, get_state_from_geoip2
 
+
 def get_coordinates(ip_address):
     """
     Get coordinates of IP address.
@@ -9,6 +10,7 @@ def get_coordinates(ip_address):
     :return: 2-tuple of latitude and longitude as floats, or None if no data is found for this IP.
     """
     return get_coordinates_from_geoip2(ip_address)
+
 
 def get_latitude(ip_address):
     """
@@ -23,6 +25,7 @@ def get_latitude(ip_address):
         return latitude
     return None
 
+
 def get_longitude(ip_address):
     """
     Return longitude of IP address, if data available.
@@ -36,6 +39,7 @@ def get_longitude(ip_address):
         return longitude
     return None
 
+
 def get_city(ip_address):
     """
     Return city of IP address, if data available.
@@ -45,6 +49,7 @@ def get_city(ip_address):
     """
     return get_city_from_geoip2(ip_address)
 
+
 def get_country(ip_address):
     """
     Return country of IP address, if data available.
@@ -53,6 +58,7 @@ def get_country(ip_address):
     :return: string
     """
     return get_country_from_geoip2(ip_address)
+
 
 def get_state(ip_address):
     """

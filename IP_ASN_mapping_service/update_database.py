@@ -110,16 +110,16 @@ def update_geoip_information(ip_object):
     try:
         geoip_lookup_data = GeoIPLookupData(ip_object.ip)
         if geoip_lookup_data:
-            if geoip_lookup_data.country:
-                update_ip_object_sub_object(ip_object, ObjectTypes.COUNTRY, str(geoip_lookup_data.country))
             if geoip_lookup_data.city:
-                update_ip_object_sub_object(ip_object, ObjectTypes.CITY, str(geoip_lookup_data.city))
+                update_ip_object_sub_object(ip_object, ObjectTypes.CITY, geoip_lookup_data.city)
+            if geoip_lookup_data.country:
+                update_ip_object_sub_object(ip_object, ObjectTypes.COUNTRY, geoip_lookup_data.country)
             if geoip_lookup_data.latitude:
-                update_ip_object_sub_object(ip_object, ObjectTypes.LATITUDE, str(geoip_lookup_data.latitude))
+                update_ip_object_sub_object(ip_object, ObjectTypes.LATITUDE, geoip_lookup_data.latitude)
             if geoip_lookup_data.longitude:
-                update_ip_object_sub_object(ip_object, ObjectTypes.LONGITUDE, str(geoip_lookup_data.longitude))
+                update_ip_object_sub_object(ip_object, ObjectTypes.LONGITUDE, geoip_lookup_data.longitude)
             if geoip_lookup_data.state:
-                update_ip_object_sub_object(ip_object, ObjectTypes.STATE, str(geoip_lookup_data.state))
+                update_ip_object_sub_object(ip_object, ObjectTypes.STATE, geoip_lookup_data.state)
     except Exception as e:
         raise
 

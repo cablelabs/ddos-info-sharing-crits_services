@@ -12,15 +12,10 @@ class GeoIPLookupData:
         self.state = None
         try:
             geoip_lookup_data = get_geoip_lookup_data_from_geoip2(ip_address)
-            if 'city' in geoip_lookup_data:
-                self.city = geoip_lookup_data['city']
-            if 'country' in geoip_lookup_data:
-                self.country = geoip_lookup_data['country']
-            if 'latitude' in geoip_lookup_data:
-                self.latitude = geoip_lookup_data['latitude']
-            if 'longitude' in geoip_lookup_data:
-                self.longitude = geoip_lookup_data['longitude']
-            if 'state' in geoip_lookup_data:
-                self.state = geoip_lookup_data['state']
+            self.city = geoip_lookup_data.get('city')
+            self.country = geoip_lookup_data.get('country')
+            self.latitude = geoip_lookup_data.get('latitude')
+            self.longitude = geoip_lookup_data.get('longitude')
+            self.state = geoip_lookup_data.get('state')
         except Exception as e:
-            pass
+            return

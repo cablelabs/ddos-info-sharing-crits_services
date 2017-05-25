@@ -1,11 +1,12 @@
 import geoip2, geoip2.database, geoip2.errors
 
+
 def get_geoip_lookup_data_from_geoip2(ip_address):
     """
     Get all relevant GeoIP data regarding IP address from local GeoIP database.
     :param ip_address:
     :type ip_address: string
-    :return: dict, which includes the following fields: 'city', 'country', 'latitude', 'longitude', 'state'
+    :return: dict, which includes the following keys whose values are strings: 'city', 'country', 'latitude', 'longitude', 'state'
     """
     database_location = '/usr/local/share/GeoIP/GeoLite2-City.mmdb'
     reader = geoip2.database.Reader(database_location)
@@ -23,16 +24,17 @@ def get_geoip_lookup_data_from_geoip2(ip_address):
     if response:
         if response.location:
             if response.location.latitude:
-                lookup_data['latitude'] = response.location.latitude
+                lookup_data['latitude'] = response.location.latitude.encode('utf-8')
             if response.location.longitude:
-                lookup_data['longitude'] = response.location.longitude
+                lookup_data['longitude'] = response.location.longitude.encode('utf-8')
         if response.city and response.city.name:
-            lookup_data['city'] = response.city.name
+            lookup_data['city'] = response.city.name.encode('utf-8')
         if response.country and response.country.name:
-            lookup_data['country'] = response.country.name
+            lookup_data['country'] = response.country.name.encode('utf-8')
         if response.subdivisions and response.subdivisions.most_specific and response.subdivisions.most_specific.name:
-            lookup_data['state'] = response.subdivisions.most_specific.name
+            lookup_data['state'] = response.subdivisions.most_specific.name.encode('utf-8')
     return lookup_data
+
 
 def get_coordinates_from_geoip2(ip_address):
     """
@@ -53,6 +55,7 @@ def get_coordinates_from_geoip2(ip_address):
     # Doesn't make sense to return result that is missing latitude and/or longitude
     return None
 
+
 def get_city_from_geoip2(ip_address):
     """
     Get city of IP address from local GeoIP database.
@@ -70,6 +73,7 @@ def get_city_from_geoip2(ip_address):
         return response.city.name
     return None
 
+
 def get_country_from_geoip2(ip_address):
     """
     Get country of IP address from local GeoIP database.
@@ -86,6 +90,7 @@ def get_country_from_geoip2(ip_address):
     if (response and response.country and response.country.name):
         return response.country.name
     return None
+
 
 def get_state_from_geoip2(ip_address):
     """
