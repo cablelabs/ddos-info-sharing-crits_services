@@ -24,9 +24,9 @@ def get_geoip_lookup_data_from_geoip2(ip_address):
     if response:
         if response.location:
             if response.location.latitude:
-                lookup_data['latitude'] = response.location.latitude.encode('utf-8')
+                lookup_data['latitude'] = str(response.location.latitude)
             if response.location.longitude:
-                lookup_data['longitude'] = response.location.longitude.encode('utf-8')
+                lookup_data['longitude'] = str(response.location.longitude)
         if response.city and response.city.name:
             lookup_data['city'] = response.city.name.encode('utf-8')
         if response.country and response.country.name:

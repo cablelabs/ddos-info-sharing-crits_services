@@ -47,7 +47,7 @@ def process_from_oplog():
     oplog = client.local.oplog.rs
     #first_entry = oplog.find().sort('ts', pymongo.ASCENDING).limit(1).next()
     #timestamp = first_entry['ts']
-    timestamp = Timestamp(1491238150, 1)
+    timestamp = Timestamp(1496182552, 1)
     while True:
         try:
             queryset = {'ts': {'$gt': timestamp},
