@@ -1,19 +1,18 @@
 {% extends "base.html" %}
 
-{% block title %}IP to ASN Mapping Service{% endblock %}
+{% block title %}Data Analytics Service{% endblock %}
 
 {% block content %}
 
-<div id="IP_ASN_start_service" width="100%">
+<div id="data_analytics_start_service" width="100%">
 
     <div>
-        <h1>IP to ASN Mapping Service</h1>
+        <h1>Data Analytics Service</h1>
     </div>
 
     <div>
-        This service runs in the background and sets the ASN value for each IP object.
-        While the service is running, it will look up the ASN value for each incoming IP object to see if the ASN value given with the data is correct.
-        If it is not correct, the service will set the ASN to the correct value, and will leave a comment on the IP object indicating that a correction occurred.
+        This service runs in the background and does a couple of things while running:
+        1) It will look up the ASN value for each incoming IP object and save it to the database.
     </div>
     <br>
     <div>
@@ -53,7 +52,7 @@ $(document).ready(function() {
     $(document).on('click', '#rerun_service', function(e) {
         $.ajax({
             type: "POST",
-            url: "{% url 'IP_ASN_mapping_service.views.rerun_service' %}",
+            url: "{% url 'data_analytics_service.views.rerun_service' %}",
             data: {},
             success: function(data){}
         })
@@ -63,7 +62,7 @@ $(document).ready(function() {
 function get_results() {
     $.ajax({
         type: "POST",
-        url: "{% url 'IP_ASN_mapping_service.views.start_or_stop_service' %}",
+        url: "{% url 'data_analytics_service.views.start_or_stop_service' %}",
         data: {},
         success: function(data) {
             $('#process_status').html('');

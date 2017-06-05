@@ -23,20 +23,13 @@ class DataDistributionResource(CRITsAPIResource):
         super(DataDistributionResource, self).__init__()
         self.request = None
         self.aggregation_pipeline = []
-        self.integer_fields = [
-            'numberOfTimesSeen',
-            'totalBPS',
-            'totalPPS',
-            'peakBPS',
-            'peakPPS'
-        ]
 
     class Meta:
         object_class = DataDistributionObject
         allowed_methods = ('get')
         resource_name = "data_distribution_resource"
-        collection_name = "dis-data"
-        excludes = ["id", "resource_uri", "unsupported_attrs"]
+        collection_name = "outputData"
+        excludes = ["resource_uri"] #["id", "resource_uri", "unsupported_attrs"]
         authentication = MultiAuthentication(CRITsApiKeyAuthentication(),
                                              CRITsSessionAuthentication())
         authorization = authorization.Authorization()
@@ -49,23 +42,57 @@ class DataDistributionResource(CRITsAPIResource):
         data['SourceName'] = source_name
         return data
 
-    # We do three things here: restructure output, remove null fields, and turn number fields into numbers from strings
     def dehydrate(self, bundle):
-        fields_to_remove = []
+        """
+        Restructure fields in bundle so data is passed on correctly, remove fields that are null or are not something we
+        intended on returning, and convert number fields from strings to integers or floats (depending on the field).
+        
+        :param bundle: 
+        :return: 
+        """
         bundle.data = bundle.obj
+        fields_to_remove = []
         all_output_fields = IPOutputFields.ALL_FIELDS[:]
-        all_output_fields.append('IPaddress')
-        for key in bundle.data:
-            if not (bundle.data[key] and key in all_output_fields):
-                fields_to_remove.append(key)
-            # TODO: how convert latitude and longitude into numbers?
-            #elif key in self.integer_fields:
-            #    try:
-            #        int_value = int(bundle.data[key])
-            #        bundle.data[key] = int_value
-            #    except (TypeError, ValueError):
-            #        continue
-        # Remove fields that have null values.
+        for field_name in bundle.data:
+            if not (bundle.data[field_name] and field_name in all_output_fields):
+                fields_to_remove.append(field_name)
+            elif field_name in IPOutputFields.INTEGER_FIELDS:
+                try:
+                    bundle.data[field_name] = int(bundle.data[field_name])
+                except (TypeError, ValueError):
+                    continue
+            elif field_name in IPOutputFields.FLOAT_FIELDS:
+                try:
+                    bundle.data[field_name] = float(bundle.data[field_name])
+                except (TypeError, ValueError):
+                    continue
+            elif field_name == IPOutputFields.EVENTS:
+                # For each event, change number fields to number values
+                for i in range(0, len(bundle.data[field_name])):
+                    try:
+                        bundle.data[field_name][i][EventOutputFields.TOTAL_BYTES_SENT] = int(bundle.data[field_name][i][EventOutputFields.TOTAL_BYTES_SENT])
+                    except (TypeError, ValueError):
+                        continue
+                    try:
+                        bundle.data[field_name][i][EventOutputFields.TOTAL_PACKETS_SENT] = int(bundle.data[field_name][i][EventOutputFields.TOTAL_PACKETS_SENT])
+                    except (TypeError, ValueError):
+                        continue
+                    try:
+                        bundle.data[field_name][i][EventOutputFields.PEAK_BYTES_PER_SECOND] = int(bundle.data[field_name][i][EventOutputFields.PEAK_BYTES_PER_SECOND])
+                    except (TypeError, ValueError):
+                        continue
+                    try:
+                        bundle.data[field_name][i][EventOutputFields.PEAK_PACKETS_PER_SECOND] = int(bundle.data[field_name][i][EventOutputFields.PEAK_PACKETS_PER_SECOND])
+                    except (TypeError, ValueError):
+                        continue
+                    try:
+                        bundle.data[field_name][i][EventOutputFields.SOURCE_PORT] = int(bundle.data[field_name][i][EventOutputFields.SOURCE_PORT])
+                    except (TypeError, ValueError):
+                        continue
+                    try:
+                        bundle.data[field_name][i][EventOutputFields.DESTINATION_PORT] = int(bundle.data[field_name][i][EventOutputFields.DESTINATION_PORT])
+                    except (TypeError, ValueError):
+                        continue
         for field in fields_to_remove:
             del bundle.data[field]
         return bundle
@@ -73,15 +100,13 @@ class DataDistributionResource(CRITsAPIResource):
     # TODO: add support for searching on particular fields like FirstSeen, LastSeen, etc.
     def obj_get_list(self, request=None, **kwargs):
         """
-        Returns the list of data returned in the 'objects' field of a GET request, but in our case we rename 'objects'
-         to 'dis-data'.
-
-        Allowed parameters in request:
+        Returns the list of data to be sent in the 'outputData' field of a GET request.
+        The following parameters are optional in the request:
         "limit", "sortBy", "sortOrder", "modifiedSince"
 
         :param request:
         :param kwargs:
-        :return: List of objects
+        :return: list of objects
         """
         if request:
             self.request = request
@@ -94,7 +119,8 @@ class DataDistributionResource(CRITsAPIResource):
             'numericOrdering': True
         }
         result = IP.objects.aggregate(*self.aggregation_pipeline, collation=collation, useCursor=False)
-        return list(result)
+        objects = list(result)
+        return objects
 
     def _add_aggregation_stages(self):
         """
@@ -103,8 +129,8 @@ class DataDistributionResource(CRITsAPIResource):
         """
         self._match_ips_on_releasability()
         self._project_ip_sub_object_fields()
-        self._unwind_and_match_on_reporting_sources()
-        self._group_documents_by_ip()
+        #self._unwind_and_match_on_reporting_sources()
+        #self._group_documents_by_ip()
         self._lookup_related_events()
         self._match_modified_since_parameter()
         self._project_event_fields_to_top_level()
@@ -134,8 +160,8 @@ class DataDistributionResource(CRITsAPIResource):
         """
         project_stage = {
             '$project': {
+                '_id': 0,
                 'ip': 1,
-                'source': 1,
                 'relationships': 1
             }
         }
@@ -161,38 +187,6 @@ class DataDistributionResource(CRITsAPIResource):
                 }
             }
         self.aggregation_pipeline.append(project_stage)
-
-    def _unwind_and_match_on_reporting_sources(self):
-        """
-        Adds aggregation stages that unwind the source field of each IP, and filter the results so only documents
-        with sources other than the user's source remain. This is done so we can later count the number of users (other
-        than this user) who reported the IP address.
-        :return: (nothing)
-        """
-        unwind_stage = {'$unwind': '$source'}
-        username = self.request.GET.get('username', '')
-        source_name = get_user_organization(username)
-        match_stage = {'$match': {'source.name': {'$ne': source_name}}}
-        stages = [unwind_stage, match_stage]
-        self.aggregation_pipeline.extend(stages)
-
-    def _group_documents_by_ip(self):
-        """
-        Adds an aggregation stage that groups repeated documents together by the IP address.
-        :return: (nothing)
-        """
-        # NOTE: After this stage, the IP address is stored as the '_id' of each document.
-        group_stage = {
-            '$group': {
-                '_id': '$ip',
-                'relationships': {'$max': '$relationships'},
-                IPOutputFields.NUMBER_OF_REPORTERS: {'$sum': 1},
-                IPOutputFields.REPORTED_BY: {'$push': '$source.name'}
-            }
-        }
-        for ip_output_field in IPOutputFields.SUB_OBJECT_FIELDS:
-            group_stage['$group'][ip_output_field] = {'$max': '$' + ip_output_field}
-        self.aggregation_pipeline.append(group_stage)
 
     def _lookup_related_events(self):
         """
@@ -271,13 +265,13 @@ class DataDistributionResource(CRITsAPIResource):
         group_stage = {
             '$group': {
                 '_id': '$eventID',
-                'IPaddress': {'$max': '$_id'},
-                'eventtimeRecorded': {'$max': '$eventtimeRecorded'},
+                IPOutputFields.IP_ADDRESS: {'$first': '$_id'},
+                'eventtimeRecorded': {'$first': '$eventtimeRecorded'},
                 'eventattackTypes': {'$addToSet': '$eventattackTypes'}
             }
         }
-        for ip_output_field in IPOutputFields.NON_AGGREGATE_FIELDS:
-            group_stage['$group'][ip_output_field] = {'$max': '$' + ip_output_field}
+        for ip_output_field in IPOutputFields.SUB_OBJECT_FIELDS:
+            group_stage['$group'][ip_output_field] = {'$first': '$' + ip_output_field}
         for event_output_field in EventOutputFields.SUB_OBJECT_FIELDS:
             if event_output_field != EventOutputFields.ATTACK_TYPES:
                 group_stage['$group']['event' + event_output_field] = {'$max': '$event' + event_output_field}
@@ -291,7 +285,7 @@ class DataDistributionResource(CRITsAPIResource):
         project_stage = {
             '$project': {
                 '_id': 0,
-                'IPaddress': 1,
+                IPOutputFields.IP_ADDRESS: 1,
                 'event': {
                     'timeRecorded': '$eventtimeRecorded',
                     'attackTypes': {
@@ -304,7 +298,7 @@ class DataDistributionResource(CRITsAPIResource):
                 },
             }
         }
-        for ip_output_field in IPOutputFields.NON_AGGREGATE_FIELDS:
+        for ip_output_field in IPOutputFields.SUB_OBJECT_FIELDS:
             project_stage['$project'][ip_output_field] = 1
         for event_output_field in EventOutputFields.SUB_OBJECT_FIELDS:
             if event_output_field != EventOutputFields.ATTACK_TYPES:
@@ -319,30 +313,31 @@ class DataDistributionResource(CRITsAPIResource):
         """
         group_stage = {
             '$group': {
-                '_id': 'IPaddress',
-                IPOutputFields.LAST_TIME_RECEIVED: {'$max': '$event.' + EventOutputFields.TIME_RECORDED},
-                IPOutputFields.TOTAL_BYTES_SENT: {'$sum': '$event.' + EventOutputFields.TOTAL_BYTES_SENT},
-                IPOutputFields.TOTAL_PACKETS_SENT: {'$sum': '$event.' + EventOutputFields.TOTAL_PACKETS_SENT},
+                '_id': '$' + IPOutputFields.IP_ADDRESS,
+                #IPOutputFields.LAST_TIME_RECEIVED: {'$max': '$event.' + EventOutputFields.TIME_RECORDED},
+                #IPOutputFields.TOTAL_BYTES_SENT: {'$sum': '$event.' + EventOutputFields.TOTAL_BYTES_SENT},
+                #IPOutputFields.TOTAL_PACKETS_SENT: {'$sum': '$event.' + EventOutputFields.TOTAL_PACKETS_SENT},
                 IPOutputFields.EVENTS: {'$push': '$event'}
             }
         }
-        for ip_output_field in IPOutputFields.NON_AGGREGATE_FIELDS:
-            group_stage['$group'][ip_output_field] = {'$max': '$' + ip_output_field}
+        for ip_output_field in IPOutputFields.SUB_OBJECT_FIELDS:
+            group_stage['$group'][ip_output_field] = {'$first': '$' + ip_output_field}
         self.aggregation_pipeline.append(group_stage)
 
     def _project_ip_address(self):
         """
-        Adds an aggregation stage that simply remaps the "_id" field to the "IPaddress" field.
+        Adds an aggregation stage that simply remaps the "_id" field to the IP address field.
         :return: (nothing)
         """
         project_ip_fields_stage = {
             '$project': {
                 '_id': 0,
-                'IPaddress': '$_id'
+                IPOutputFields.IP_ADDRESS: '$_id'
             }
         }
         for ip_output_field in IPOutputFields.ALL_FIELDS:
-            project_ip_fields_stage['$project'][ip_output_field] = 1
+            if ip_output_field != IPOutputFields.IP_ADDRESS:
+                project_ip_fields_stage['$project'][ip_output_field] = 1
         self.aggregation_pipeline.append(project_ip_fields_stage)
 
     def _add_sort_to_pipeline(self):

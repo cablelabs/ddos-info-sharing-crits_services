@@ -5,6 +5,7 @@ class IPOutputFields:
     This class defines the strings used for the names of fields returned by the distribution service at the top-level of
     an IP object.
     """
+    IP_ADDRESS = 'IPaddress'
     LAST_TIME_RECEIVED = 'lastTimeReceived'
     NUMBER_OF_TIMES_SEEN = 'numberOfTimesSeen'
     NUMBER_OF_REPORTERS = 'numberOfReporters'
@@ -20,22 +21,33 @@ class IPOutputFields:
 
     # Fields whose values are found in sub-objects of the IP.
     SUB_OBJECT_FIELDS = [
+        LAST_TIME_RECEIVED,
         NUMBER_OF_TIMES_SEEN,
+        NUMBER_OF_REPORTERS,
+        REPORTED_BY,
         CITY,
         STATE,
         COUNTRY,
         LATITUDE,
-        LONGITUDE
+        LONGITUDE,
+        TOTAL_BYTES_SENT,
+        TOTAL_PACKETS_SENT
     ]
     # Maps each sub-object field to the 'type' of the sub-object that contains the 'value' for that field.
     SUB_OBJECT_FIELDS_TO_OBJECT_TYPES = {
+        LAST_TIME_RECEIVED: ObjectTypes.TIME_LAST_SEEN,
         NUMBER_OF_TIMES_SEEN: ObjectTypes.NUMBER_OF_TIMES_SEEN,
+        NUMBER_OF_REPORTERS: ObjectTypes.NUMBER_OF_REPORTERS,
+        REPORTED_BY: ObjectTypes.REPORTED_BY,
         CITY: ObjectTypes.CITY,
         STATE: ObjectTypes.STATE,
         COUNTRY: ObjectTypes.COUNTRY,
         LATITUDE: ObjectTypes.LATITUDE,
-        LONGITUDE: ObjectTypes.LONGITUDE
+        LONGITUDE: ObjectTypes.LONGITUDE,
+        TOTAL_BYTES_SENT: ObjectTypes.TOTAL_BYTES_SENT,
+        TOTAL_PACKETS_SENT: ObjectTypes.TOTAL_PACKETS_SENT
     }
+
     @classmethod
     def get_object_type_from_field_name(cls, field_name):
         """
@@ -66,9 +78,16 @@ class IPOutputFields:
     INTEGER_FIELDS = [
         NUMBER_OF_TIMES_SEEN,
         NUMBER_OF_REPORTERS,
-
+        TOTAL_BYTES_SENT,
+        TOTAL_PACKETS_SENT
+    ]
+    # Fields whose type is float.
+    FLOAT_FIELDS = [
+        LATITUDE,
+        LONGITUDE
     ]
     ALL_FIELDS = [
+        IP_ADDRESS,
         LAST_TIME_RECEIVED,
         NUMBER_OF_TIMES_SEEN,
         NUMBER_OF_REPORTERS,
@@ -100,6 +119,7 @@ class EventOutputFields:
     SUB_OBJECT_FIELDS = [
         ATTACK_START_TIME,
         ATTACK_STOP_TIME,
+        ATTACK_TYPES,
         TOTAL_BYTES_SENT,
         TOTAL_PACKETS_SENT,
         PEAK_BYTES_PER_SECOND,
@@ -121,6 +141,7 @@ class EventOutputFields:
         DESTINATION_PORT: ObjectTypes.DEST_PORT,
         PROTOCOL: ObjectTypes.PROTOCOL
     }
+
     @classmethod
     def get_object_type_from_field_name(cls, field_name):
         """
@@ -135,6 +156,15 @@ class EventOutputFields:
         if field_name not in cls.SUB_OBJECT_FIELDS_TO_OBJECT_TYPES:
             raise ValueError("'" + field_name + "' is not an output field for Event objects.")
         return cls.SUB_OBJECT_FIELDS_TO_OBJECT_TYPES[field_name]
+
+    INTEGER_FIELDS = [
+        TOTAL_BYTES_SENT,
+        TOTAL_PACKETS_SENT,
+        PEAK_BYTES_PER_SECOND,
+        PEAK_PACKETS_PER_SECOND,
+        SOURCE_PORT,
+        DESTINATION_PORT
+    ]
 
     ALL_EVENT_FIELDS = [
         ATTACK_START_TIME,

@@ -63,7 +63,7 @@ def process_from_oplog():
                     timestamp = doc['ts']
                     object_id = doc['o']['target_id']
                     ip_object = IP.objects(id=object_id).first()
-                    if ip_object and ip_object.status != Status.ANALYZED:
+                    if ip_object and ip_object.status == Status.IN_PROGRESS:
                         analyze_and_update_ip_object(ip_object)
                 time.sleep(1)
         except Exception as e:
@@ -79,7 +79,8 @@ def rerun_service():
     """
     try:
         for ip_object in IP.objects:
-            analyze_and_update_ip_object(ip_object)
+            if ip_object.status != Status.NEW:
+                analyze_and_update_ip_object(ip_object)
         return {'success': True,
                 'html': ''}
     except Exception:

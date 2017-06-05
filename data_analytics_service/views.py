@@ -8,8 +8,8 @@ from crits.core.user_tools import user_can_view_data
 from . import handlers
 
 @user_passes_test(user_can_view_data)
-def ip_asn_service_screen(request):
-    return render_to_response('ip_asn_service_screen.html',
+def data_analytics_service_screen(request):
+    return render_to_response('data_analytics_service_screen.html',
                               {'process_status': handlers.process_status()},
                               RequestContext(request))
 

@@ -1,6 +1,6 @@
 from django import forms
 
-class IPASNMappingServiceConfigForm(forms.Form):
+class DataAnalyticsServiceConfigForm(forms.Form):
     error_css_class = 'error'
     required_css_class = 'required'
     is_running = forms.BooleanField(required=False,
@@ -9,4 +9,4 @@ class IPASNMappingServiceConfigForm(forms.Form):
 
     def __init__(self, *args, **kwargs):
         kwargs.setdefault('label_suffix', ':')
-        super(IPASNMappingServiceConfigForm, self).__init__(*args, **kwargs)
+        super(DataAnalyticsServiceConfigForm, self).__init__(*args, **kwargs)
