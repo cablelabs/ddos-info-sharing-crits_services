@@ -35,7 +35,7 @@ class IPOutputFields:
     ]
     # Maps each sub-object field to the 'type' of the sub-object that contains the 'value' for that field.
     SUB_OBJECT_FIELDS_TO_OBJECT_TYPES = {
-        LAST_TIME_RECEIVED: ObjectTypes.TIME_LAST_SEEN,
+        LAST_TIME_RECEIVED: ObjectTypes.LAST_TIME_RECEIVED,
         NUMBER_OF_TIMES_SEEN: ObjectTypes.NUMBER_OF_TIMES_SEEN,
         NUMBER_OF_REPORTERS: ObjectTypes.NUMBER_OF_REPORTERS,
         REPORTED_BY: ObjectTypes.REPORTED_BY,

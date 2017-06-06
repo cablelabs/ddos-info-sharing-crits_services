@@ -6,10 +6,8 @@ from crits.core.api import CRITsApiKeyAuthentication, CRITsSessionAuthentication
 from crits.core.api import CRITsSerializer, CRITsAPIResource
 from crits.core.user_tools import get_user_organization, user_sources
 from crits.ips.ip import IP
-from crits.vocabulary.objects import ObjectTypes
 
 from DataDistributionObject import DataDistributionObject
-from handlers import create_raw_query, get_limit
 from vocabulary import IPOutputFields, EventOutputFields
 
 
@@ -29,7 +27,7 @@ class DataDistributionResource(CRITsAPIResource):
         allowed_methods = ('get')
         resource_name = "data_distribution_resource"
         collection_name = "outputData"
-        excludes = ["resource_uri"] #["id", "resource_uri", "unsupported_attrs"]
+        excludes = ["id", "resource_uri", "unsupported_attrs"]
         authentication = MultiAuthentication(CRITsApiKeyAuthentication(),
                                              CRITsSessionAuthentication())
         authorization = authorization.Authorization()
@@ -129,8 +127,6 @@ class DataDistributionResource(CRITsAPIResource):
         """
         self._match_ips_on_releasability()
         self._project_ip_sub_object_fields()
-        #self._unwind_and_match_on_reporting_sources()
-        #self._group_documents_by_ip()
         self._lookup_related_events()
         self._match_modified_since_parameter()
         self._project_event_fields_to_top_level()
@@ -158,34 +154,50 @@ class DataDistributionResource(CRITsAPIResource):
         Adds an aggregation stage that projects the values of each IP's sub-objects to top-level fields.
         :return: (nothing)
         """
+        reported_by_sub_object_type = IPOutputFields.get_object_type_from_field_name(IPOutputFields.REPORTED_BY)
+        reported_by_projection = {
+            '$map': {
+                'input': {
+                    '$filter': {
+                        'input': '$objects',
+                        'as': 'obj',
+                        'cond': {'$eq': ['$$obj.type', reported_by_sub_object_type]}
+                    }
+                },
+                'as': 'reporter_obj',
+                'in': '$$reporter_obj.value'
+            }
+        }
         project_stage = {
             '$project': {
                 '_id': 0,
-                'ip': 1,
-                'relationships': 1
+                IPOutputFields.IP_ADDRESS: '$ip',
+                'relationships': 1,
+                IPOutputFields.REPORTED_BY: reported_by_projection
             }
         }
         for ip_output_field in IPOutputFields.SUB_OBJECT_FIELDS:
-            sub_object_type = IPOutputFields.get_object_type_from_field_name(ip_output_field)
-            project_stage['$project'][ip_output_field] = {
-                '$let': {
-                    'vars': {
-                        'one_obj': {
-                            '$arrayElemAt': [
-                                {
-                                    '$filter': {
-                                        'input': '$objects',
-                                        'as': 'obj',
-                                        'cond': {'$eq': ['$$obj.type', sub_object_type]}
-                                    }
-                                },
-                                0
-                            ]
-                        }
-                    },
-                    'in': '$$one_obj.value'
+            if ip_output_field != IPOutputFields.REPORTED_BY:
+                sub_object_type = IPOutputFields.get_object_type_from_field_name(ip_output_field)
+                project_stage['$project'][ip_output_field] = {
+                    '$let': {
+                        'vars': {
+                            'one_obj': {
+                                '$arrayElemAt': [
+                                    {
+                                        '$filter': {
+                                            'input': '$objects',
+                                            'as': 'obj',
+                                            'cond': {'$eq': ['$$obj.type', sub_object_type]}
+                                        }
+                                    },
+                                    0
+                                ]
+                            }
+                        },
+                        'in': '$$one_obj.value'
+                    }
                 }
-            }
         self.aggregation_pipeline.append(project_stage)
 
     def _lookup_related_events(self):
@@ -234,6 +246,7 @@ class DataDistributionResource(CRITsAPIResource):
         unwind_stage = {'$unwind': '$event.objects'}
         project_stage = {
             '$project': {
+                IPOutputFields.IP_ADDRESS: 1,
                 'eventID': '$event._id',
                 'eventtimeRecorded': {
                     '$dateToString': {
@@ -243,7 +256,7 @@ class DataDistributionResource(CRITsAPIResource):
                 }
             }
         }
-        for ip_output_field in IPOutputFields.NON_AGGREGATE_FIELDS:
+        for ip_output_field in IPOutputFields.SUB_OBJECT_FIELDS:
             project_stage['$project'][ip_output_field] = 1
         for event_output_field in EventOutputFields.SUB_OBJECT_FIELDS:
             sub_object_type = EventOutputFields.get_object_type_from_field_name(event_output_field)
@@ -265,7 +278,7 @@ class DataDistributionResource(CRITsAPIResource):
         group_stage = {
             '$group': {
                 '_id': '$eventID',
-                IPOutputFields.IP_ADDRESS: {'$first': '$_id'},
+                IPOutputFields.IP_ADDRESS: {'$first': '$'+IPOutputFields.IP_ADDRESS},
                 'eventtimeRecorded': {'$first': '$eventtimeRecorded'},
                 'eventattackTypes': {'$addToSet': '$eventattackTypes'}
             }
@@ -285,10 +298,10 @@ class DataDistributionResource(CRITsAPIResource):
         project_stage = {
             '$project': {
                 '_id': 0,
-                IPOutputFields.IP_ADDRESS: 1,
+                'IPaddress': 1,
                 'event': {
-                    'timeRecorded': '$eventtimeRecorded',
-                    'attackTypes': {
+                    EventOutputFields.TIME_RECORDED: '$eventtimeRecorded',
+                    EventOutputFields.ATTACK_TYPES: {
                         '$filter': {
                             'input': '$eventattackTypes',
                             'as': 'attackType',
@@ -314,9 +327,6 @@ class DataDistributionResource(CRITsAPIResource):
         group_stage = {
             '$group': {
                 '_id': '$' + IPOutputFields.IP_ADDRESS,
-                #IPOutputFields.LAST_TIME_RECEIVED: {'$max': '$event.' + EventOutputFields.TIME_RECORDED},
-                #IPOutputFields.TOTAL_BYTES_SENT: {'$sum': '$event.' + EventOutputFields.TOTAL_BYTES_SENT},
-                #IPOutputFields.TOTAL_PACKETS_SENT: {'$sum': '$event.' + EventOutputFields.TOTAL_PACKETS_SENT},
                 IPOutputFields.EVENTS: {'$push': '$event'}
             }
         }
@@ -332,12 +342,12 @@ class DataDistributionResource(CRITsAPIResource):
         project_ip_fields_stage = {
             '$project': {
                 '_id': 0,
-                IPOutputFields.IP_ADDRESS: '$_id'
+                IPOutputFields.IP_ADDRESS: '$_id',
+                IPOutputFields.EVENTS: 1
             }
         }
-        for ip_output_field in IPOutputFields.ALL_FIELDS:
-            if ip_output_field != IPOutputFields.IP_ADDRESS:
-                project_ip_fields_stage['$project'][ip_output_field] = 1
+        for ip_output_field in IPOutputFields.SUB_OBJECT_FIELDS:
+            project_ip_fields_stage['$project'][ip_output_field] = 1
         self.aggregation_pipeline.append(project_ip_fields_stage)
 
     def _add_sort_to_pipeline(self):
