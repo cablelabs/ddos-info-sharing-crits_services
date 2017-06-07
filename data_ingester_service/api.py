@@ -1,4 +1,4 @@
-import json
+import json, os
 from jsonschema import validate, FormatChecker, ValidationError
 from tastypie import authorization
 from tastypie.authentication import MultiAuthentication
@@ -25,8 +25,11 @@ class DataIngesterResource(CRITsAPIResource):
 
     def __init__(self):
         super(DataIngesterResource, self).__init__()
-        # TODO: Obtain the path to the JSON schema in data ingester service directory.
-        schema_file = open('/home/infosharing/git/crits_services/data_ingester_service/Data Ingester Payload Schema.json', 'r')
+        # ASSUMPTION: Current working directory is directory for CRITs (thus, the string will end in 'crits').
+        # Also assumes that 'crits' and 'crits_services' directories are at the same level within some other directory.
+        current_working_directory = os.getcwd()
+        path_to_schema = current_working_directory + '_services/data_ingester_service/Data Ingester Payload Schema.json'
+        schema_file = open(path_to_schema, 'r')
         self.input_schema = json.load(schema_file)
 
     def obj_create(self, bundle, **kwargs):
