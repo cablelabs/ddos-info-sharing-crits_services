@@ -18,7 +18,21 @@ class IPOutputFields:
     TOTAL_BYTES_SENT = 'totalBytesSent'
     TOTAL_PACKETS_SENT = 'totalPacketsSent'
     EVENTS = 'events'
-
+    ALL_FIELDS = [
+        IP_ADDRESS,
+        LAST_TIME_RECEIVED,
+        NUMBER_OF_TIMES_SEEN,
+        NUMBER_OF_REPORTERS,
+        REPORTED_BY,
+        CITY,
+        STATE,
+        COUNTRY,
+        LATITUDE,
+        LONGITUDE,
+        TOTAL_BYTES_SENT,
+        TOTAL_PACKETS_SENT,
+        EVENTS
+    ]
     # Fields whose values are found in sub-objects of the IP.
     SUB_OBJECT_FIELDS = [
         LAST_TIME_RECEIVED,
@@ -47,6 +61,18 @@ class IPOutputFields:
         TOTAL_BYTES_SENT: ObjectTypes.TOTAL_BYTES_SENT,
         TOTAL_PACKETS_SENT: ObjectTypes.TOTAL_PACKETS_SENT
     }
+    # Fields whose type is integer.
+    INTEGER_FIELDS = [
+        NUMBER_OF_TIMES_SEEN,
+        NUMBER_OF_REPORTERS,
+        TOTAL_BYTES_SENT,
+        TOTAL_PACKETS_SENT
+    ]
+    # Fields whose type is float.
+    FLOAT_FIELDS = [
+        LATITUDE,
+        LONGITUDE
+    ]
 
     @classmethod
     def get_object_type_from_field_name(cls, field_name):
@@ -60,47 +86,9 @@ class IPOutputFields:
         :raise ValueError: field_name is not a field returned by the distribution service at the top-level of an IP
         """
         if field_name not in cls.SUB_OBJECT_FIELDS_TO_OBJECT_TYPES:
-            raise ValueError("'" + field_name + "' is not an output field for IP objects.")
+            raise ValueError("'" + field_name + "' is not a sub-object field for IP objects.")
         return cls.SUB_OBJECT_FIELDS_TO_OBJECT_TYPES[field_name]
 
-    # Fields that do not require aggregation on the IP's events to calculate.
-    NON_AGGREGATE_FIELDS = [
-        NUMBER_OF_TIMES_SEEN,
-        NUMBER_OF_REPORTERS,
-        REPORTED_BY,
-        CITY,
-        STATE,
-        COUNTRY,
-        LATITUDE,
-        LONGITUDE
-    ]
-    # Fields whose type is integer.
-    INTEGER_FIELDS = [
-        NUMBER_OF_TIMES_SEEN,
-        NUMBER_OF_REPORTERS,
-        TOTAL_BYTES_SENT,
-        TOTAL_PACKETS_SENT
-    ]
-    # Fields whose type is float.
-    FLOAT_FIELDS = [
-        LATITUDE,
-        LONGITUDE
-    ]
-    ALL_FIELDS = [
-        IP_ADDRESS,
-        LAST_TIME_RECEIVED,
-        NUMBER_OF_TIMES_SEEN,
-        NUMBER_OF_REPORTERS,
-        REPORTED_BY,
-        CITY,
-        STATE,
-        COUNTRY,
-        LATITUDE,
-        LONGITUDE,
-        TOTAL_BYTES_SENT,
-        TOTAL_PACKETS_SENT,
-        EVENTS
-    ]
 
 class EventOutputFields:
     ATTACK_START_TIME = 'attackStartTime'
@@ -114,7 +102,19 @@ class EventOutputFields:
     SOURCE_PORT = 'sourcePort'
     DESTINATION_PORT = 'destinationPort'
     PROTOCOL = 'protocol'
-
+    ALL_EVENT_FIELDS = [
+        ATTACK_START_TIME,
+        ATTACK_STOP_TIME,
+        TIME_RECORDED,
+        ATTACK_TYPES,
+        TOTAL_BYTES_SENT,
+        TOTAL_PACKETS_SENT,
+        PEAK_BYTES_PER_SECOND,
+        PEAK_PACKETS_PER_SECOND,
+        SOURCE_PORT,
+        DESTINATION_PORT,
+        PROTOCOL
+    ]
     # Fields whose values are found in sub-objects of the Event.
     SUB_OBJECT_FIELDS = [
         ATTACK_START_TIME,
@@ -141,6 +141,14 @@ class EventOutputFields:
         DESTINATION_PORT: ObjectTypes.DEST_PORT,
         PROTOCOL: ObjectTypes.PROTOCOL
     }
+    INTEGER_FIELDS = [
+        TOTAL_BYTES_SENT,
+        TOTAL_PACKETS_SENT,
+        PEAK_BYTES_PER_SECOND,
+        PEAK_PACKETS_PER_SECOND,
+        SOURCE_PORT,
+        DESTINATION_PORT
+    ]
 
     @classmethod
     def get_object_type_from_field_name(cls, field_name):
@@ -154,28 +162,5 @@ class EventOutputFields:
         :raise ValueError: field_name is not a field returned by the distribution service at the top-level of an Event
         """
         if field_name not in cls.SUB_OBJECT_FIELDS_TO_OBJECT_TYPES:
-            raise ValueError("'" + field_name + "' is not an output field for Event objects.")
+            raise ValueError("'" + field_name + "' is not a sub-object field for Event objects.")
         return cls.SUB_OBJECT_FIELDS_TO_OBJECT_TYPES[field_name]
-
-    INTEGER_FIELDS = [
-        TOTAL_BYTES_SENT,
-        TOTAL_PACKETS_SENT,
-        PEAK_BYTES_PER_SECOND,
-        PEAK_PACKETS_PER_SECOND,
-        SOURCE_PORT,
-        DESTINATION_PORT
-    ]
-
-    ALL_EVENT_FIELDS = [
-        ATTACK_START_TIME,
-        ATTACK_STOP_TIME,
-        TIME_RECORDED,
-        ATTACK_TYPES,
-        TOTAL_BYTES_SENT,
-        TOTAL_PACKETS_SENT,
-        PEAK_BYTES_PER_SECOND,
-        PEAK_PACKETS_PER_SECOND,
-        SOURCE_PORT,
-        DESTINATION_PORT,
-        PROTOCOL
-    ]

@@ -1,0 +1,5 @@
+This service is one of three services for the DDoS Information Sharing Project. This service receives data from ISPs through POST requests to the API.
+
+WARNING: Before loading this service with CRITs, make sure the /data directory contains a file named 'Data-Ingester-Payload-Schema.json'.
+In other words, make sure the file '/data/Data-Ingester-Payload-Schema.json' exists. This file should contain a JSON schema file describing
+the format of data sent to the service.
