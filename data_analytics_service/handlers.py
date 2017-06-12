@@ -15,6 +15,7 @@ process = None
 
 
 def process_status():
+    global process
     if process is None:
         return 'Stopped'
     return 'Running'
@@ -83,6 +84,7 @@ def rerun_service():
                 analyze_and_update_ip_object(ip_object)
         return {'success': True,
                 'html': ''}
-    except Exception:
+    except Exception as e:
+        print("Error while re-run processing: " + e.message)
         return {'success': False,
                 'html': ''}

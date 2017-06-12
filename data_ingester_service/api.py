@@ -25,10 +25,8 @@ class DataIngesterResource(CRITsAPIResource):
 
     def __init__(self):
         super(DataIngesterResource, self).__init__()
-        # ASSUMPTION: Current working directory is directory for CRITs (thus, the string will end in 'crits').
-        # Also assumes that 'crits' and 'crits_services' directories are at the same level within some other directory.
-        current_working_directory = os.getcwd()
-        path_to_schema = current_working_directory + '_services/data_ingester_service/Data Ingester Payload Schema.json'
+        # ASSUMPTION: File named 'Data-Ingester-Payload-Schema.json' exists in directory '/data'.
+        path_to_schema = '/data/Data-Ingester-Payload-Schema.json'
         schema_file = open(path_to_schema, 'r')
         self.input_schema = json.load(schema_file)
 

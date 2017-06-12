@@ -23,7 +23,8 @@ def get_as_name_from_rdap_using_as_number(as_number):
     :type as_number: string
     :return: string
     """
-    get_url = 'https://rdap.db.ripe.net/autnum/' + as_number
-    response = requests.get(url=get_url)
-    response_json = response.json()
-    return response_json['name']
+    return 'UNRESOLVED'
+    # get_url = 'https://rdap.db.ripe.net/autnum/' + as_number
+    # response = requests.get(url=get_url)
+    # response_json = response.json()
+    # return response_json['name']
