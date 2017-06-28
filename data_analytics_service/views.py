@@ -7,11 +7,13 @@ from crits.core.user_tools import user_can_view_data
 
 from . import handlers
 
+
 @user_passes_test(user_can_view_data)
 def data_analytics_service_screen(request):
     return render_to_response('data_analytics_service_screen.html',
                               {'process_status': handlers.process_status()},
                               RequestContext(request))
+
 
 @user_passes_test(user_can_view_data)
 def start_or_stop_service(request):
@@ -19,10 +21,10 @@ def start_or_stop_service(request):
         results = handlers.start_or_stop_service()
         return HttpResponse(json.dumps(results),
                             content_type="application/json")
-    else:
-        return render_to_response('error.html',
-                                  {'error': "Must be POST and AJAX."},
-                                  RequestContext(request))
+    return render_to_response('error.html',
+                              {'error': "Must be POST and AJAX."},
+                              RequestContext(request))
+
 
 @user_passes_test(user_can_view_data)
 def rerun_service(request):
@@ -30,7 +32,6 @@ def rerun_service(request):
         results = handlers.rerun_service()
         return HttpResponse(json.dumps(results),
                             content_type="application/json")
-    else:
-        return render_to_response('error.html',
-                                  {'error': "Must be POST and AJAX."},
-                                  RequestContext(request))
+    return render_to_response('error.html',
+                              {'error': "Must be POST and AJAX."},
+                              RequestContext(request))

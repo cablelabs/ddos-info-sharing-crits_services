@@ -7,7 +7,6 @@ from crits.core.api import CRITsSerializer, CRITsAPIResource
 from crits.core.user_tools import get_user_organization, user_sources
 from crits.ips.ip import IP
 
-from DataDistributionObject import DataDistributionObject
 from vocabulary import IPOutputFields, EventOutputFields
 
 
@@ -23,7 +22,6 @@ class DataDistributionResource(CRITsAPIResource):
         self.aggregation_pipeline = []
 
     class Meta:
-        object_class = DataDistributionObject
         allowed_methods = ('get')
         resource_name = "data_distribution_resource"
         collection_name = "outputData"
@@ -32,68 +30,6 @@ class DataDistributionResource(CRITsAPIResource):
                                              CRITsSessionAuthentication())
         authorization = authorization.Authorization()
         serializer = CRITsSerializer()
-
-    def alter_list_data_to_serialize(self, request, data):
-        del data['meta']
-        username = request.GET.get('username', '')
-        source_name = get_user_organization(username)
-        data['SourceName'] = source_name
-        return data
-
-    def dehydrate(self, bundle):
-        """
-        Restructure fields in bundle so data is passed on correctly, remove fields that are null or are not something we
-        intended on returning, and convert number fields from strings to integers or floats (depending on the field).
-        
-        :param bundle: 
-        :return: 
-        """
-        bundle.data = bundle.obj
-        fields_to_remove = []
-        all_output_fields = IPOutputFields.ALL_FIELDS[:]
-        for field_name in bundle.data:
-            if not (bundle.data[field_name] and field_name in all_output_fields):
-                fields_to_remove.append(field_name)
-            elif field_name in IPOutputFields.INTEGER_FIELDS:
-                try:
-                    bundle.data[field_name] = int(bundle.data[field_name])
-                except (TypeError, ValueError):
-                    continue
-            elif field_name in IPOutputFields.FLOAT_FIELDS:
-                try:
-                    bundle.data[field_name] = float(bundle.data[field_name])
-                except (TypeError, ValueError):
-                    continue
-            elif field_name == IPOutputFields.EVENTS:
-                # For each event, change number fields to number values
-                for i in range(0, len(bundle.data[field_name])):
-                    try:
-                        bundle.data[field_name][i][EventOutputFields.TOTAL_BYTES_SENT] = int(bundle.data[field_name][i][EventOutputFields.TOTAL_BYTES_SENT])
-                    except (TypeError, ValueError):
-                        continue
-                    try:
-                        bundle.data[field_name][i][EventOutputFields.TOTAL_PACKETS_SENT] = int(bundle.data[field_name][i][EventOutputFields.TOTAL_PACKETS_SENT])
-                    except (TypeError, ValueError):
-                        continue
-                    try:
-                        bundle.data[field_name][i][EventOutputFields.PEAK_BYTES_PER_SECOND] = int(bundle.data[field_name][i][EventOutputFields.PEAK_BYTES_PER_SECOND])
-                    except (TypeError, ValueError):
-                        continue
-                    try:
-                        bundle.data[field_name][i][EventOutputFields.PEAK_PACKETS_PER_SECOND] = int(bundle.data[field_name][i][EventOutputFields.PEAK_PACKETS_PER_SECOND])
-                    except (TypeError, ValueError):
-                        continue
-                    try:
-                        bundle.data[field_name][i][EventOutputFields.SOURCE_PORT] = int(bundle.data[field_name][i][EventOutputFields.SOURCE_PORT])
-                    except (TypeError, ValueError):
-                        continue
-                    try:
-                        bundle.data[field_name][i][EventOutputFields.DESTINATION_PORT] = int(bundle.data[field_name][i][EventOutputFields.DESTINATION_PORT])
-                    except (TypeError, ValueError):
-                        continue
-        for field in fields_to_remove:
-            del bundle.data[field]
-        return bundle
 
     # TODO: add support for searching on particular fields like FirstSeen, LastSeen, etc.
     def obj_get_list(self, request=None, **kwargs):
@@ -377,3 +313,68 @@ class DataDistributionResource(CRITsAPIResource):
             raise ValueError("'limit' field set to invalid value. Must be integer.")
         limit = {'$limit': limit_integer}
         self.aggregation_pipeline.append(limit)
+
+    def dehydrate(self, bundle):
+        """
+        Restructure fields in bundle so data is passed on correctly, remove fields that are null or are not something we
+        intended on returning, and convert number fields from strings to integers or floats (depending on the field).
+
+        :param bundle:
+        :return:
+        """
+        bundle.data = bundle.obj
+        # Remove all top-level null fields from IP object.
+        fields_to_remove = []
+        for field_name in bundle.data:
+            if not bundle.data[field_name]:
+                fields_to_remove.append(field_name)
+        for field in fields_to_remove:
+            del bundle.data[field]
+        # Convert appropriate fields of IP object to integers.
+        for field_name in IPOutputFields.INTEGER_FIELDS:
+            if bundle.data.get(field_name):
+                try:
+                    bundle.data[field_name] = int(bundle.data[field_name])
+                except (TypeError, ValueError):
+                    pass
+        # Convert appropriate fields of IP object to floating point numbers.
+        for field_name in IPOutputFields.FLOAT_FIELDS:
+            if bundle.data.get(field_name):
+                try:
+                    bundle.data[field_name] = float(bundle.data[field_name])
+                except (TypeError, ValueError):
+                    pass
+        if bundle.data.get(IPOutputFields.EVENTS):
+            # Dehydrate each event.
+            for i in range(0, len(bundle.data[IPOutputFields.EVENTS])):
+                # Remove all null fields from event.
+                fields_to_remove = []
+                for field_name in bundle.data[IPOutputFields.EVENTS][i]:
+                    if not bundle.data[IPOutputFields.EVENTS][i][field_name]:
+                        fields_to_remove.append(field_name)
+                for field in fields_to_remove:
+                    del bundle.data[IPOutputFields.EVENTS][i][field]
+                # Convert appropriate fields of event to integers.
+                for integer_field in EventOutputFields.INTEGER_FIELDS:
+                    if bundle.data[IPOutputFields.EVENTS][i].get(integer_field):
+                        try:
+                            bundle.data[IPOutputFields.EVENTS][i][integer_field] = int(
+                                bundle.data[IPOutputFields.EVENTS][i][integer_field])
+                        except (TypeError, ValueError):
+                            pass
+        return bundle
+
+    def alter_list_data_to_serialize(self, request, data):
+        """
+        Note: This function gets called after calling dehydrate() (above) on each bundle object, all within get_list()
+        of resources.py of the tastypie library.
+
+        :param request:
+        :param data:
+        :return:
+        """
+        del data['meta']
+        username = request.GET.get('username', '')
+        source_name = get_user_organization(username)
+        data['SourceName'] = source_name
+        return data

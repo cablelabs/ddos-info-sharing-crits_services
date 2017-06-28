@@ -11,32 +11,47 @@ from crits.vocabulary.status import Status
 from update_database import analyze_and_update_ip_object
 
 # Global variables
-process = None
+#process = None
 
 
 def process_status():
-    global process
-    if process is None:
-        return 'Stopped'
-    return 'Running'
+    #global process
+    client = MongoClient()
+    service_config = client.crits.service_config
+    config = service_config.find_one({})
+    # Assume service is running only if configuration exists, and PID is set to a value.
+    if config and config['pid'] is not None:
+        return 'Running'
+    return 'Stopped'
 
 
 def start_or_stop_service():
-    global process
+    #global process
     is_success = True
-    status = 'Stopped'
+    status = 'Running'
     try:
-        if process is None:
+        client = MongoClient()
+        service_config = client.crits.service_config
+        config = service_config.find_one({})
+        if config:
+            if config['pid'] is None:
+                process = Process(target=process_from_oplog, args=())
+                process.start()
+                service_config.update_one({'_id': config['_id']}, {'$set': {'pid': process.pid}})
+            else:
+                pid = config['pid']
+                os.kill(pid, signal.SIGKILL)
+                #process.join()
+                #process = None
+                service_config.update_one({'_id': config['_id']}, {'$set': {'pid': None}})
+                status = 'Stopped'
+        else:
+            # Assume service is not running when configuration does not yet exist.
             process = Process(target=process_from_oplog, args=())
             process.start()
-            print "Started new process with PID: " + str(process.pid) + "."
-            status = 'Running'
-        else:
-            pid = process.pid
-            os.kill(pid, signal.SIGKILL)
-            process.join()
-            process = None
-    except Exception:
+            config = {'pid': process.pid}
+            service_config.insert_one(config)
+    except Exception as e:
         is_success = False
     return {'success': is_success,
             'html': '',
@@ -48,7 +63,7 @@ def process_from_oplog():
     oplog = client.local.oplog.rs
     #first_entry = oplog.find().sort('ts', pymongo.ASCENDING).limit(1).next()
     #timestamp = first_entry['ts']
-    timestamp = Timestamp(1496182552, 1)
+    timestamp = Timestamp(1497600000, 1)
     while True:
         try:
             queryset = {'ts': {'$gt': timestamp},
@@ -64,6 +79,9 @@ def process_from_oplog():
                     timestamp = doc['ts']
                     object_id = doc['o']['target_id']
                     ip_object = IP.objects(id=object_id).first()
+                    #if ip_object:
+                    #    print "Viewing oplog entry for IP '" + ip_object.ip + "':"
+                    #    print doc
                     if ip_object and ip_object.status == Status.IN_PROGRESS:
                         analyze_and_update_ip_object(ip_object)
                 time.sleep(1)

@@ -7,11 +7,13 @@ from crits.core.user_tools import user_can_view_data
 
 import handlers
 
+
 @user_passes_test(user_can_view_data)
 def source_associater_screen(request):
     return render_to_response('source_associater_screen.html',
                               {},
                               RequestContext(request))
+
 
 @user_passes_test(user_can_view_data)
 def get_all_source_names(request):
@@ -24,10 +26,10 @@ def get_all_source_names(request):
         }
         return HttpResponse(json.dumps(output),
                             content_type="application/json")
-    else:
-        return render_to_response('error.html',
-                                  {'error': "Must be GET and AJAX."},
-                                  RequestContext(request))
+    return render_to_response('error.html',
+                              {'error': "Must be GET and AJAX."},
+                              RequestContext(request))
+
 
 @user_passes_test(user_can_view_data)
 def associate_ips_to_sources(request):
@@ -45,7 +47,6 @@ def associate_ips_to_sources(request):
         }
         return HttpResponse(json.dumps(output),
                             content_type="application/json")
-    else:
-        return render_to_response('error.html',
-                                  {'error': "Must be POST and AJAX."},
-                                  RequestContext(request))
+    return render_to_response('error.html',
+                              {'error': "Must be POST and AJAX."},
+                              RequestContext(request))

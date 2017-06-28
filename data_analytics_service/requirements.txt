@@ -1,3 +1,4 @@
+bson
 geoip2
 ipwhois
 requests

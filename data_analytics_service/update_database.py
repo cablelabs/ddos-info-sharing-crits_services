@@ -23,14 +23,22 @@ def analyze_and_update_ip_object(ip_object):
     """
     global analyst
     try:
+        ip_address = ip_object.ip
+        #print "Updating event aggregate fields for IP '" + ip_address + "'."
         update_event_aggregate_fields(ip_object)
+        #print "Updating ASN information for IP '" + ip_address + "'."
         as_number = update_asn_information(ip_object)
+        #print "Adding appropriate sources to IP '" + ip_address + "'."
         add_owning_source_to_ip(ip_object, as_number)
+        #print "Updating reporter fields for IP '" + ip_address + "'."
         update_reporter_fields(ip_object)
+        #print "Updating geoip information for IP '" + ip_address + "'."
         update_geoip_information(ip_object)
+        #print "Setting status of IP '" + ip_address + "' to 'Analyzed'."
         ip_object.set_status(Status.ANALYZED)
-        # TODO: Potential looping problem because saving data to IP will add another entry to the audit_log.
+        #print "Saving IP '" + ip_object.ip + "' in data analytics service."
         ip_object.save(username=analyst)
+        #print "Done saving IP '" + ip_address + "' for data analytics service."
     except Exception as e:
         raise
     return
@@ -75,7 +83,7 @@ def update_reporter_fields_untested_version(ip_object):
     number_of_reporters_str = str(len(reporter_names_set))
     update_ip_object_sub_object(ip_object, ObjectTypes.NUMBER_OF_REPORTERS, number_of_reporters_str)
 
-
+# TODO: compare performance of these steps to version where I use aggregate on events collection, or aggregate on a single IP object using lookup stage
 def update_event_aggregate_fields(ip_object):
     """
     Update fields that are the result of aggregating data from multiple events.
@@ -86,9 +94,9 @@ def update_event_aggregate_fields(ip_object):
     """
     total_bytes_sent = 0
     total_packets_sent = 0
-    for relationship in ip_object['relationships']:
-        if relationship['rel_type'] == 'Event':
-            event_id = relationship['object_id']
+    for relationship in ip_object.relationships:
+        if relationship.rel_type == 'Event':
+            event_id = relationship.object_id
             event = Event.objects(id=event_id).first()
             if event:
                 for obj in event.obj:
@@ -147,8 +155,11 @@ def add_owning_source_to_ip(ip_object, as_number):
             if source:
                 ip_object.add_source(source)
                 # Add a brand new releasability, and add an instance to that releasability.
+                #print "Adding releasability to IP '" + ip_object.ip + "' for source '" + source.name + "'."
                 add_releasability('IP', ip_object.id, source.name, analyst)
+                #print "Adding releasability instance to IP '" + ip_object.ip + "' for source '" + source.name + "'."
                 add_releasability_instance('IP', ip_object.id, source.name, analyst)
+                #print "Done adding releasability instance to IP '" + ip_object.ip + "' for source '" + source.name + "'."
         except Exception as e:
             raise
     return

@@ -28,13 +28,17 @@ def save_ingest_data(analyst, source, ingest_data_entries):
         ip_object = IP.objects(ip=ip_address).first()
         if ip_object:
             ip_object.set_status(Status.NEW)
+            #print "Ingester: Resetting status of IP '" + ip_address + "' to 'New'."
             ip_object.save(username=analyst)
+            #print "Ingester: Done resetting status."
         ip_type = ip_address_type(ip_address)
+        #print "Ingester: Add/update to IP '" + ip_address + "'."
         result = ip_add_update(ip_address=ip_address, ip_type=ip_type, source=source, analyst=analyst)
+        #print "Ingester: Done with add/update."
         if not result['success']:
             raise Exception(result['message'])
-        update_ip_object_additional_fields(analyst, source, ip_address)
         save_new_event(analyst, source, ingest_data_entry)
+        update_ip_object_additional_fields(analyst, source, ip_address)
 
 
 def ip_address_type(ip):
@@ -54,44 +58,6 @@ def ip_address_type(ip):
             return 'IPv6 Address'
     except ValueError:
         raise ValueError('IP is not a valid IPv4 or IPv6 address.')
-
-
-def update_ip_object_additional_fields(analyst, source, ip_address):
-    """
-    Updates additional fields for the IP object.
-    
-    :param analyst: The analyst who sent the POST message for the IP object.
-    :type analyst: str
-    :param source: The source of the POST message for the IP object.
-    :type source: str
-    :param ip_address: The IP address of the IP object to update.
-    :type ip_address: str
-    :return: (nothing)
-    """
-    ip_object = IP.objects(ip=ip_address).first()
-    is_last_time_received_present = False
-    is_number_of_times_seen_present = False
-    current_time_string = datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
-    for o in ip_object.obj:
-        if o.object_type == ObjectTypes.LAST_TIME_RECEIVED:
-            o.value = current_time_string
-            is_last_time_received_present = True
-        elif o.object_type == ObjectTypes.NUMBER_OF_TIMES_SEEN:
-            # Increment number of times seen
-            try:
-                int_value = int(o.value)
-                int_value += 1
-                o.value = str(int_value)
-            except (TypeError, ValueError):
-                pass
-            is_number_of_times_seen_present = True
-    # Create new sub-objects for types that were not present.
-    if not is_last_time_received_present:
-        ip_object.add_object(ObjectTypes.LAST_TIME_RECEIVED, current_time_string, source, '', '', analyst)
-    if not is_number_of_times_seen_present:
-        ip_object.add_object(ObjectTypes.NUMBER_OF_TIMES_SEEN, '1', source, '', '', analyst)
-    ip_object.set_status(Status.IN_PROGRESS)
-    ip_object.save(username=analyst)
 
 
 def save_new_event(analyst, source, ingest_data_entry):
@@ -159,4 +125,46 @@ def save_new_event(analyst, source, ingest_data_entry):
                                     reference='',
                                     analyst=analyst
                                     )
+    #print "Saving new event for IP '" + ip_address + "'."
     event_object.save(username=analyst)
+    #print "Done saving event for IP '" + ip_address + "'."
+
+
+def update_ip_object_additional_fields(analyst, source, ip_address):
+    """
+    Updates additional fields for the IP object.
+
+    :param analyst: The analyst who sent the POST message for the IP object.
+    :type analyst: str
+    :param source: The source of the POST message for the IP object.
+    :type source: str
+    :param ip_address: The IP address of the IP object to update.
+    :type ip_address: str
+    :return: (nothing)
+    """
+    ip_object = IP.objects(ip=ip_address).first()
+    is_last_time_received_present = False
+    is_number_of_times_seen_present = False
+    current_time_string = datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+    for o in ip_object.obj:
+        if o.object_type == ObjectTypes.LAST_TIME_RECEIVED:
+            o.value = current_time_string
+            is_last_time_received_present = True
+        elif o.object_type == ObjectTypes.NUMBER_OF_TIMES_SEEN:
+            # Increment number of times seen
+            try:
+                int_value = int(o.value)
+                int_value += 1
+                o.value = str(int_value)
+            except (TypeError, ValueError):
+                pass
+            is_number_of_times_seen_present = True
+    # Create new sub-objects for types that were not present.
+    if not is_last_time_received_present:
+        ip_object.add_object(ObjectTypes.LAST_TIME_RECEIVED, current_time_string, source, '', '', analyst)
+    if not is_number_of_times_seen_present:
+        ip_object.add_object(ObjectTypes.NUMBER_OF_TIMES_SEEN, '1', source, '', '', analyst)
+    ip_object.set_status(Status.IN_PROGRESS)
+    #print "Saving updates to IP '" + ip_object.ip + "' and setting status to 'In Progress'."
+    ip_object.save(username=analyst)
+    #print "Done saving updates to IP '" + ip_object.ip + "'."
