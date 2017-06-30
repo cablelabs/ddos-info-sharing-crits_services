@@ -22,6 +22,8 @@ class DataIngesterResource(CRITsAPIResource):
         resource_name = "data_ingester_resource"
         collection_name = "ingestData"
         excludes = ["id", "resource_uri", "unsupported_attrs"]
+        limit = 20
+        max_limit = 0
         authentication = MultiAuthentication(CRITsApiKeyAuthentication(),
                                              CRITsSessionAuthentication())
         authorization = authorization.Authorization()
@@ -95,7 +97,7 @@ class DataIngesterResource(CRITsAPIResource):
             'locale': 'en_US_POSIX',
             'numericOrdering': True
         }
-        result = IP.objects.aggregate(*self.aggregation_pipeline, collation=collation, useCursor=False)
+        result = IP.objects.aggregate(*self.aggregation_pipeline, allowDiskUse=True, collation=collation, useCursor=False)
         objects = list(result)
         return objects
 
@@ -114,7 +116,6 @@ class DataIngesterResource(CRITsAPIResource):
         self._project_ip_address()
         self._project_event_fields()
         self._add_sort_to_pipeline()
-        self._add_limit_to_pipeline()
 
     def _match_ips_on_releasability(self):
         # Find all ips whose source includes user's organization in source, but not in relasability
@@ -290,14 +291,6 @@ class DataIngesterResource(CRITsAPIResource):
         """
         sort_stage = {'$sort': {IPOutputFields.LAST_TIME_RECEIVED: -1}}
         self.aggregation_pipeline.append(sort_stage)
-
-    def _add_limit_to_pipeline(self):
-        """
-        Defines the limit on the number of IP addresses to return, and adds it to the aggregation pipeline.
-        :return: (nothing)
-        """
-        limit = {'$limit': 200}
-        self.aggregation_pipeline.append(limit)
 
     def dehydrate(self, bundle):
         """

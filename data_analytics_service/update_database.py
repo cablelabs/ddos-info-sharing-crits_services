@@ -94,6 +94,8 @@ def update_event_aggregate_fields(ip_object):
     """
     total_bytes_sent = 0
     total_packets_sent = 0
+    aggregate_bytes_per_second = 0
+    aggregate_packets_per_second = 0
     for relationship in ip_object.relationships:
         if relationship.rel_type == 'Event':
             event_id = relationship.object_id
@@ -110,8 +112,20 @@ def update_event_aggregate_fields(ip_object):
                             total_packets_sent += int(obj.value)
                         except (TypeError, ValueError):
                             continue
+                    elif obj.object_type == ObjectTypes.PEAK_BYTES_PER_SECOND:
+                        try:
+                            aggregate_bytes_per_second += int(obj.value)
+                        except (TypeError, ValueError):
+                            continue
+                    elif obj.object_type == ObjectTypes.PEAK_PACKETS_PER_SECOND:
+                        try:
+                            aggregate_packets_per_second += int(obj.value)
+                        except (TypeError, ValueError):
+                            continue
     update_ip_object_sub_object(ip_object, ObjectTypes.TOTAL_BYTES_SENT, str(total_bytes_sent))
     update_ip_object_sub_object(ip_object, ObjectTypes.TOTAL_PACKETS_SENT, str(total_packets_sent))
+    update_ip_object_sub_object(ip_object, ObjectTypes.AGGREGATE_BYTES_PER_SECOND, str(aggregate_bytes_per_second))
+    update_ip_object_sub_object(ip_object, ObjectTypes.AGGREGATE_PACKETS_PER_SECOND, str(aggregate_packets_per_second))
 
 
 def update_asn_information(ip_object):

@@ -26,6 +26,8 @@ class DataDistributionResource(CRITsAPIResource):
         resource_name = "data_distribution_resource"
         collection_name = "outputData"
         excludes = ["id", "resource_uri", "unsupported_attrs"]
+        limit = 20
+        max_limit = 0
         authentication = MultiAuthentication(CRITsApiKeyAuthentication(),
                                              CRITsSessionAuthentication())
         authorization = authorization.Authorization()
@@ -52,7 +54,7 @@ class DataDistributionResource(CRITsAPIResource):
             'locale': 'en_US_POSIX',
             'numericOrdering': True
         }
-        result = IP.objects.aggregate(*self.aggregation_pipeline, collation=collation, useCursor=False)
+        result = IP.objects.aggregate(*self.aggregation_pipeline, allowDiskUse=True, collation=collation, useCursor=False)
         objects = list(result)
         return objects
 
@@ -71,7 +73,6 @@ class DataDistributionResource(CRITsAPIResource):
         self._group_documents_by_ip_with_event_data()
         self._project_ip_address()
         self._add_sort_to_pipeline()
-        self._add_limit_to_pipeline()
 
     def _match_ips_on_releasability(self):
         """
@@ -300,19 +301,6 @@ class DataDistributionResource(CRITsAPIResource):
             sort_order_number = -1 if (sort_order == 'desc') else 1
             sort_stage = {'$sort': {sort_by: sort_order_number}}
             self.aggregation_pipeline.append(sort_stage)
-
-    def _add_limit_to_pipeline(self):
-        """
-        Defines the limit on the number of IP addresses to return, and adds it to the aggregation pipeline.
-        :return: (nothing)
-        """
-        input_limit = self.request.GET.get('limit', '20')
-        try:
-            limit_integer = int(input_limit)
-        except (TypeError, ValueError):
-            raise ValueError("'limit' field set to invalid value. Must be integer.")
-        limit = {'$limit': limit_integer}
-        self.aggregation_pipeline.append(limit)
 
     def dehydrate(self, bundle):
         """

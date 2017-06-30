@@ -17,6 +17,8 @@ class IPOutputFields:
     LONGITUDE = 'Longitude'
     TOTAL_BYTES_SENT = 'totalBytesSent'
     TOTAL_PACKETS_SENT = 'totalPacketsSent'
+    AGGREGATE_BYTES_PER_SECOND = 'aggregateBytesPerSecond'
+    AGGREGATE_PACKETS_PER_SECOND = 'aggregatePacketsPerSecond'
     EVENTS = 'events'
     ALL_FIELDS = [
         IP_ADDRESS,
@@ -31,6 +33,8 @@ class IPOutputFields:
         LONGITUDE,
         TOTAL_BYTES_SENT,
         TOTAL_PACKETS_SENT,
+        AGGREGATE_BYTES_PER_SECOND,
+        AGGREGATE_PACKETS_PER_SECOND,
         EVENTS
     ]
     # Fields whose values are found in sub-objects of the IP.
@@ -45,7 +49,9 @@ class IPOutputFields:
         LATITUDE,
         LONGITUDE,
         TOTAL_BYTES_SENT,
-        TOTAL_PACKETS_SENT
+        TOTAL_PACKETS_SENT,
+        AGGREGATE_BYTES_PER_SECOND,
+        AGGREGATE_PACKETS_PER_SECOND
     ]
     # Maps each sub-object field to the 'type' of the sub-object that contains the 'value' for that field.
     SUB_OBJECT_FIELDS_TO_OBJECT_TYPES = {
@@ -59,14 +65,18 @@ class IPOutputFields:
         LATITUDE: ObjectTypes.LATITUDE,
         LONGITUDE: ObjectTypes.LONGITUDE,
         TOTAL_BYTES_SENT: ObjectTypes.TOTAL_BYTES_SENT,
-        TOTAL_PACKETS_SENT: ObjectTypes.TOTAL_PACKETS_SENT
+        TOTAL_PACKETS_SENT: ObjectTypes.TOTAL_PACKETS_SENT,
+        AGGREGATE_BYTES_PER_SECOND: ObjectTypes.AGGREGATE_BYTES_PER_SECOND,
+        AGGREGATE_PACKETS_PER_SECOND: ObjectTypes.AGGREGATE_PACKETS_PER_SECOND
     }
     # Fields whose type is integer.
     INTEGER_FIELDS = [
         NUMBER_OF_TIMES_SEEN,
         NUMBER_OF_REPORTERS,
         TOTAL_BYTES_SENT,
-        TOTAL_PACKETS_SENT
+        TOTAL_PACKETS_SENT,
+        AGGREGATE_BYTES_PER_SECOND,
+        AGGREGATE_PACKETS_PER_SECOND
     ]
     # Fields whose type is float.
     FLOAT_FIELDS = [
