@@ -28,13 +28,13 @@ def save_ingest_data(analyst, source, ingest_data_entries):
         ip_object = IP.objects(ip=ip_address).first()
         if ip_object:
             ip_object.set_status(Status.NEW)
-            #print "Ingester: Resetting status of IP '" + ip_address + "' to 'New'."
+            print "Ingester: Resetting status of IP '" + ip_address + "' to 'New'."
             ip_object.save(username=analyst)
-            #print "Ingester: Done resetting status."
+            print "Ingester: Done resetting status."
         ip_type = ip_address_type(ip_address)
-        #print "Ingester: Add/update to IP '" + ip_address + "'."
+        print "Ingester: Add/update to IP '" + ip_address + "'."
         result = ip_add_update(ip_address=ip_address, ip_type=ip_type, source=source, analyst=analyst)
-        #print "Ingester: Done with add/update."
+        print "Ingester: Done with add/update."
         if not result['success']:
             raise Exception(result['message'])
         save_new_event(analyst, source, ingest_data_entry)
@@ -125,9 +125,9 @@ def save_new_event(analyst, source, ingest_data_entry):
                                     reference='',
                                     analyst=analyst
                                     )
-    #print "Saving new event for IP '" + ip_address + "'."
+    print "Saving new event for IP '" + ip_address + "'."
     event_object.save(username=analyst)
-    #print "Done saving event for IP '" + ip_address + "'."
+    print "Done saving event for IP '" + ip_address + "'."
 
 
 def update_ip_object_additional_fields(analyst, source, ip_address):
@@ -165,6 +165,6 @@ def update_ip_object_additional_fields(analyst, source, ip_address):
     if not is_number_of_times_seen_present:
         ip_object.add_object(ObjectTypes.NUMBER_OF_TIMES_SEEN, '1', source, '', '', analyst)
     ip_object.set_status(Status.IN_PROGRESS)
-    #print "Saving updates to IP '" + ip_object.ip + "' and setting status to 'In Progress'."
+    print "Saving updates to IP '" + ip_object.ip + "' and setting status to 'In Progress'."
     ip_object.save(username=analyst)
-    #print "Done saving updates to IP '" + ip_object.ip + "'."
+    print "Done saving updates to IP '" + ip_object.ip + "'."

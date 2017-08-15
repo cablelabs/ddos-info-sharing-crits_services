@@ -24,21 +24,21 @@ def analyze_and_update_ip_object(ip_object):
     global analyst
     try:
         ip_address = ip_object.ip
-        #print "Updating event aggregate fields for IP '" + ip_address + "'."
+        print "Updating event aggregate fields for IP '" + ip_address + "'."
         update_event_aggregate_fields(ip_object)
-        #print "Updating ASN information for IP '" + ip_address + "'."
+        print "Updating ASN information for IP '" + ip_address + "'."
         as_number = update_asn_information(ip_object)
-        #print "Adding appropriate sources to IP '" + ip_address + "'."
+        print "Adding appropriate sources to IP '" + ip_address + "'."
         add_owning_source_to_ip(ip_object, as_number)
-        #print "Updating reporter fields for IP '" + ip_address + "'."
+        print "Updating reporter fields for IP '" + ip_address + "'."
         update_reporter_fields(ip_object)
-        #print "Updating geoip information for IP '" + ip_address + "'."
+        print "Updating geoip information for IP '" + ip_address + "'."
         update_geoip_information(ip_object)
-        #print "Setting status of IP '" + ip_address + "' to 'Analyzed'."
+        print "Setting status of IP '" + ip_address + "' to 'Analyzed'."
         ip_object.set_status(Status.ANALYZED)
-        #print "Saving IP '" + ip_object.ip + "' in data analytics service."
+        print "Saving IP '" + ip_object.ip + "' in data analytics service."
         ip_object.save(username=analyst)
-        #print "Done saving IP '" + ip_address + "' for data analytics service."
+        print "Done saving IP '" + ip_address + "' for data analytics service."
     except Exception as e:
         raise
     return
