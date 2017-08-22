@@ -1,18 +1,17 @@
 from datetime import datetime
 import os
+import Queue
 from pymongo import MongoClient, CursorType
 import signal
-import time
 from bson.timestamp import Timestamp
-from multiprocessing import Process, Pool, Value
+from multiprocessing import Process, Pool
+import socket
 
 from crits.ips.ip import IP
 from crits.vocabulary.status import Status
 
+from AnalyzerThread import AnalyzerThread
 from update_database import analyze_and_update_ip_object
-
-# Global variables
-#pool = None
 
 
 def process_status():
@@ -46,7 +45,12 @@ def start_or_stop_service():
                 service_config.update_one({'_id': config['_id']}, {'$set': {'pid': process.pid}})
             else:
                 try:
-                    os.kill(config_pid, signal.SIGKILL)
+                    #os.kill(config_pid, signal.SIGKILL)
+                    # TODO: do NOT send kill, instead send message to socket
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.connect(('127.0.0.1', 9999))
+                    #s.send("hey")
+                    s.close()
                     service_config.update_one({'_id': config['_id']}, {'$set': {'pid': None}})
                     status = 'Stopped'
                 except OSError:
@@ -68,68 +72,22 @@ def start_or_stop_service():
             'process_status': status}
 
 
-def start_main_process():
-    """
-    Starts the main process that runs a continuous loop to monitor the oplog.
-    :return: The PID of the newly-started process.
-    """
-    process = Process(target=process_from_oplog, args=())
-    process.start()
-    return process.pid
-
-
 def process_from_oplog():
-    #def cleanup(signum, frame):
-    #    if pool is not None:
-    #        pool.terminate()
-    #signal.signal(signal.SIGINT, cleanup)
-    client = MongoClient()
-    oplog = client.local.oplog.rs
-    #first_entry = oplog.find().sort('ts', pymongo.ASCENDING).limit(1).next()
-    #timestamp = first_entry['ts']
-    timestamp = Timestamp(1497600000, 1)
-    number_of_processes = 10
-    try:
-        pool = Pool(processes=number_of_processes)
-        while True:
-            try:
-                if pool is None:
-                    pool = Pool(processes=number_of_processes)
-                queryset = {'ts': {'$gt': timestamp},
-                            'ns': 'crits.audit_log',
-                            'o.type': 'IP'}
-                # oplog is capped collection, so it can be tailed
-                cursor = oplog.find(queryset,
-                                    cursor_type=CursorType.TAILABLE_AWAIT,
-                                    oplog_replay=True)
-                cursor.add_option(8)
-                while cursor.alive:
-                    documents = []
-                    for doc in cursor:
-                        timestamp = doc['ts']
-                        documents.append(doc)
-                        # process_document(doc)
-                    pool.imap_unordered(process_document, documents)
-                    time.sleep(1)
-            except Exception as e:
-                print("Error while processing oplog: " + e.message)
-                if pool is not None:
-                    pool.terminate()
-                    pool = None
-                continue
-    finally:
-        if pool is not None:
-            pool.terminate()
-
-
-def process_document(doc):
-    object_id = doc['o']['target_id']
-    ip_object = IP.objects(id=object_id).first()
-    # if ip_object:
-    #     print "Viewing oplog entry for IP '" + ip_object.ip + "':"
-    #     print doc
-    if ip_object and ip_object.status == Status.IN_PROGRESS:
-        analyze_and_update_ip_object(ip_object)
+    #is_processing = True
+    is_processing_queue = Queue.Queue(1)
+    analyzer_thread = AnalyzerThread(is_processing_queue)
+    analyzer_thread.start()
+    # listen for signal from button press
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind(('127.0.0.1', 9999))
+    server_socket.listen(5)
+    conn, addr = server_socket.accept()
+    server_socket.close()
+    # if we get here, button has been pressed
+    # tell analyzer_thread to stop processing
+    is_processing_queue.put(True)
+    analyzer_thread.join()
+    print "doneeee"
 
 
 def rerun_service():
