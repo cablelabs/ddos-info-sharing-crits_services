@@ -21,7 +21,7 @@ class AnalyzerThread(Thread):
         oplog = client.local.oplog.rs
         # first_entry = oplog.find().sort('ts', pymongo.ASCENDING).limit(1).next()
         # timestamp = first_entry['ts']
-        timestamp = Timestamp(1501545600, 1)
+        timestamp = Timestamp(1498867200, 1)
         number_of_processes = 10
         # TODO: use array instead of queue, because the front process may complete after other processes, in which case
         # we should replace those other processes when the array gets full and we still have documents to analyze
