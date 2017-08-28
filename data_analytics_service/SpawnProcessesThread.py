@@ -49,7 +49,8 @@ class SpawnProcessesThread(Thread):
                 elif self.iteration_unit == 'ips':
                     ips = client.crits.ips
                     ip_objects = ips.find({'status': 'In Progress'})
-                    for ip_object in ip_objects:
+                    for obj in ip_objects:
+                        ip_object = IP.objects(id=obj['_id']).first()
                         self.bounded_semaphore.acquire()
                         if not self.shutdown_queue.empty():
                             self.bounded_semaphore.release()
