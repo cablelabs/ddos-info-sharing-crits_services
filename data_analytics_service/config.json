@@ -1,3 +1,4 @@
 {
-  "max_number_of_processes": 100
+  "max_number_of_processes": 10,
+  "iteration_unit": "ips"
 }

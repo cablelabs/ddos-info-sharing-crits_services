@@ -18,11 +18,14 @@ password = "Let me in you knuckle head!"
 config_json_file = open('config.json')
 config_json = json.load(config_json_file)
 max_number_of_processes = config_json['max_number_of_processes']
+# This determines what the thread should iterate over when assigning jobs to processes.
+# 'oplog' means look at the entries in the oplog.rs collection. 'ips' means to do every IP address.
+iteration_unit = config_json['iteration_unit']
 
 shutdown_queue = Queue.Queue(1)
 analyzer_processes_queue = Queue.Queue(max_number_of_processes)
 bounded_semaphore = BoundedSemaphore(max_number_of_processes)
-spawner_thread = SpawnProcessesThread(shutdown_queue, analyzer_processes_queue, bounded_semaphore)
+spawner_thread = SpawnProcessesThread(shutdown_queue, analyzer_processes_queue, bounded_semaphore, iteration_unit)
 remover_thread = RemoveCompletedProcessesThread(shutdown_queue, analyzer_processes_queue, bounded_semaphore)
 
 spawner_thread.start()
