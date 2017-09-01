@@ -90,7 +90,7 @@ class MongoDBFunctionsWrapper:
         counts[new_events_key] = self.events.count(filter=new_events_query)
         return counts
 
-    def count_unique_ip_per_month(self):
+    def count_unique_ips_per_month(self):
         counts = {}
         start_month = datetime(year=2017, month=6, day=1)
         current_month = start_month
