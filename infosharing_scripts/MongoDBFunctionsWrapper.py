@@ -7,8 +7,9 @@ class MongoDBFunctionsWrapper:
 
     # Ideas for functions:
     # - The number of IPs or Events submitted in a given time frame (day/week/month).
-    # - The number of IPs or Events submitted each month.
+    # - The number of IPs or Events submitted each specific day/month.
     # - For these two ideas, IPs can mean any IP submitted, or only new IPs submitted, or only IPs for a given ISP/user.
+    # - Number of IPs per source
     # - Not a collector function: A function to re-analyze a specific set of IP addresses
     # (i.e. when you see just a few that are off, re-analyze and see if they get fixed)
 
@@ -16,12 +17,14 @@ class MongoDBFunctionsWrapper:
         client = MongoClient()
         self.ips = client.crits.ips
         self.events = client.crits.events
+        self.users = client.crits.users
 
     ### Find Functions ###
 
     # - The latest date of any Analyzed IP address. This function isn't quite what I want. I want the latest date that an
     # IP which is currently analyzed was submitted to the system. Looking at the 'created' date may not be enough because
-    #
+    # TODO: goal of this function is to determine how far along the analytics service is. In other words, how close is
+    # it to "catching up" to the most recent submission. What metric would measure this?
     def find_latest_date_ip_analyzed(self):
         """
         The RFC 3339 formatted date of the the latest time that a currently Analyzed IP address was created.
@@ -31,6 +34,12 @@ class MongoDBFunctionsWrapper:
         return str(ip_object['created'])
 
     ### Count Functions ###
+
+    def count_ips(self):
+        return self.ips.count()
+
+    def count_events(self):
+        return self.events.count()
 
     def count_ips_by_status(self):
         counts = {}
@@ -108,7 +117,9 @@ class MongoDBFunctionsWrapper:
             current_month = next_month
         return counts
 
-    # TODO: should this mean IPs 'created' or 'modified' each month? I'm guessing modified, not unique IPs
+    # TODO: Create function that counts ips and events per specific day. Possibly merge with function below.
+
+    # TODO: should this count IPs 'created' or 'modified' each month? I'm guessing modified (i.e. not necessarily unique IPs).
     def count_submissions_per_month(self):
         # Note: In a given month, the number of IPs and Events is unequal if and only if users submit to the same IP
         # multiple times, resulting in more events but not more IPs. So IPs should always be less.
@@ -131,6 +142,15 @@ class MongoDBFunctionsWrapper:
             current_month_str = current_month.strftime("%Y-%m")
             counts[current_month_str] = current_month_counts
             current_month = next_month
+        return counts
+
+    #TODO: Think if this is best way to count what I want. Are my assumptions valid?
+    def count_ips_by_user(self):
+        counts = {}
+        for user in self.users.find():
+            username = user['username']
+            count = self.ips.count({'source.instances.analyst': username})
+            counts[username] = count
         return counts
 
     ### Remove Functions ###
