@@ -13,17 +13,22 @@ for key, value in ip_status_count.iteritems():
 output_lines.append("Total # of IPs: " + str(wrapper.count_ips()))
 output_lines.append("Total # of Events: " + str(wrapper.count_events()))
 
-latest_date_str = "Latest date analyzed: " + wrapper.find_latest_date_ip_analyzed()
-output_lines.append(latest_date_str)
-
 output_lines.append("Unique IPs per Month:")
 unique_ips_count = wrapper.count_unique_ips_per_month()
 for key, value in sorted(unique_ips_count.iteritems()):
     next_line = key + ":" + str(value)
     output_lines.append(next_line)
 
+output_lines.append("Submissions per Day:")
+submissions_count = wrapper.count_submissions_per_period(period='day')
+for month, counts in sorted(submissions_count.iteritems()):
+    output_lines.append(month + ":")
+    for key, value in counts.iteritems():
+        next_line = key + ":" + str(value)
+        output_lines.append(next_line)
+
 output_lines.append("Submissions per Month:")
-submissions_count = wrapper.count_submissions_per_month()
+submissions_count = wrapper.count_submissions_per_period(period='month')
 for month, counts in sorted(submissions_count.iteritems()):
     output_lines.append(month + ":")
     for key, value in counts.iteritems():
@@ -35,8 +40,6 @@ user_ips_count = wrapper.count_ips_by_user()
 for username, value in user_ips_count.iteritems():
     next_line = username + ":" + str(value)
     output_lines.append(next_line)
-
-#TODO: print ips and events per specific day
 
 for line in output_lines:
     print line
