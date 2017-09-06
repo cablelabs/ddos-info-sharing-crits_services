@@ -97,13 +97,14 @@ class MongoDBFunctionsWrapper:
             current_month = next_month
         return counts
 
-    def count_submitted_ips_per_period(self, period='day'):
+    def count_submissions_per_period(self, period='day'):
         """
-        Count the number of IPs submitted within the specified division of periods.
+        Count the number of IPs and Events submitted within the specified division of periods.
 
         :param period: The type of period into which the counts should be divided.
         :type period: str, one of 'day' or 'month'
         :return: dict
+        :raise ValueError: 'period' parameter not a valid period to iterate across.
         """
         counts = {}
         start_period = datetime(year=2017, month=6, day=1)
@@ -111,15 +112,16 @@ class MongoDBFunctionsWrapper:
         today = datetime.today()
         if period == 'day':
             period_delta = relativedelta(days=1)
-            format_string = "%Y-%m-%d"
+            format_string = "%m/%d/%Y"
         elif period == 'month':
             period_delta = relativedelta(months=1)
-            format_string = "%Y-%m"
+            format_string = "%m-%Y"
         else:
             raise ValueError("Invalid input for parameter 'period'.")
         while current_period < today:
             next_period = current_period + period_delta
-            query = {
+            current_period_counts = {}
+            ips_query = {
                 'relationships': {
                     '$elemMatch': {
                         'date': {
@@ -129,60 +131,21 @@ class MongoDBFunctionsWrapper:
                     }
                 }
             }
-            current_period_str = current_period.strftime(format_string)
-            counts[current_period_str] = self.ips.count(query)
-            current_period = next_period
-        return counts
-
-    def count_events_per_period(self, period='day'):
-        """
-        Count the number of events submitted within the specified division of periods.
-
-        :param period: The type of period into which the counts should be divided.
-        :type period: str, one of 'day' or 'month'
-        :return: dict
-        """
-        counts = {}
-        start_period = datetime(year=2017, month=6, day=1)
-        current_period = start_period
-        today = datetime.today()
-        if period == 'day':
-            period_delta = relativedelta(days=1)
-            format_string = "%Y-%m-%d"
-        elif period == 'month':
-            period_delta = relativedelta(months=1)
-            format_string = "%Y-%m"
-        else:
-            raise ValueError("Invalid input for parameter 'period'.")
-        while current_period < today:
-            next_period = current_period + period_delta
-            query = {
+            current_period_counts['ips'] = self.ips.count(ips_query)
+            events_query = {
                 'created': {
                     '$gte': current_period,
                     '$lt': next_period
                 }
             }
+            current_period_counts['events'] = self.events.count(events_query)
             current_period_str = current_period.strftime(format_string)
-            counts[current_period_str] = self.events.count(query)
+            counts[current_period_str] = current_period_counts
             current_period = next_period
         return counts
 
-    def count_submissions_per_period(self, period='day'):
-        # TODO: Problem that both functions use a function that gets the current time, so the start time won't be
-        # the same for both function calls. Thus, if I were to submit very late in the day, the count of IPs could
-        # use one less day than the events count.
-        ips_counts = self.count_submitted_ips_per_period(period)
-        events_counts = self.count_events_per_period(period)
-        per_period_counts = {}
-        for period, ips_count in ips_counts.iteritems():
-            events_count = events_counts[period]
-            per_period_counts[period] = {
-                'ips': ips_count,
-                'events': events_count
-            }
-        return per_period_counts
-
     #TODO: Think if this is best way to count what I want. Are my assumptions valid?
+    #TODO: How do I prevent overlap in IPs when counting? Do I want to prevent overlap?
     #TODO: possibly create another function that counts number of events they submitted.
     def count_ips_by_user(self):
         counts = {}
