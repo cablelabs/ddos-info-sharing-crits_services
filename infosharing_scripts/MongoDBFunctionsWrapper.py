@@ -13,6 +13,76 @@ class MongoDBFunctionsWrapper:
 
     ### Find Functions ###
 
+    def find_ips_ids(self):
+        cursor = self.ips.find(projection={})
+        ips_ids = []
+        for entry in cursor:
+            ips_ids.append(entry['_id'])
+        return ips_ids
+
+    def find_new_ips_ids(self):
+        one_month_ago = datetime.today() - relativedelta(days=70)
+        # Filter based on 'modified' date because the "old" IPs are those whose latest Event is still considered "old",
+        # and IPs with new Events may have been created long before their latest Event was added.
+        query = {
+            'modified': {
+                '$gte': one_month_ago
+            }
+        }
+        cursor = self.ips.find(filter=query, projection={})
+        ips_ids = []
+        for entry in cursor:
+            ips_ids.append(entry['_id'])
+        return ips_ids
+
+    def find_events_ids(self):
+        cursor = self.events.find(projection={})
+        events_ids = []
+        for entry in cursor:
+            events_ids.append(entry['_id'])
+        return events_ids
+
+    def find_new_events_ids(self):
+        one_month_ago = datetime.today() - relativedelta(days=70)
+        query = {
+            'created': {
+                '$gte': one_month_ago
+            }
+        }
+        cursor = self.events.find(filter=query, projection={})
+        events_ids = []
+        for entry in cursor:
+            events_ids.append(entry['_id'])
+        return events_ids
+
+    def find_ips_with_invalid_relationships(self):
+        """
+        Find all IPs with one or more invalid relationships.
+        :return: dict
+        """
+        # TODO: Figure out how to make this faster. It runs very slow now when there are many IPs.
+        ip_objects = self.ips.find()
+        ids_of_bad_ips = []
+        for ip_object in ip_objects:
+            for relationship in ip_object['relationships']:
+                if relationship['type'] == 'Event':
+                    event_id = relationship['value']
+                    event = self.events.find_one({'_id': event_id})
+                    if not event:
+                        ids_of_bad_ips.append(ip_object['_id'])
+                        break
+        query = {
+            '_id': {
+                '$in': ids_of_bad_ips
+            }
+        }
+        projection = {
+            'ip': 1,
+            'relationships': 1
+        }
+        bad_ips = self.ips.find(filter=query, projection=projection)
+        return bad_ips
+
     ### Count Functions ###
 
     def count_ips(self):
@@ -38,15 +108,17 @@ class MongoDBFunctionsWrapper:
         """
         counts = {}
         one_month_ago = datetime.today() - timedelta(days=days_ago)
+        # Filter based on 'modified' date because the "old" IPs are those whose latest Event is still considered "old",
+        # and IPs with new Events may have been created long before their latest Event was added.
         old_ips_query = {
-            'created': {
+            'modified': {
                 '$lt': one_month_ago
             }
         }
         old_ips_key = 'IPs older than ' + str(days_ago) + ' days'
         counts[old_ips_key] = self.ips.count(filter=old_ips_query)
         new_ips_query = {
-            'created': {
+            'modified': {
                 '$gte': one_month_ago
             }
         }
@@ -63,6 +135,7 @@ class MongoDBFunctionsWrapper:
         """
         counts = {}
         one_month_ago = datetime.today() - timedelta(days=days_ago)
+        # TODO: Use time event was created, or the attack start or stop time?
         old_events_query = {
             'created': {
                 '$lt': one_month_ago
@@ -173,7 +246,7 @@ class MongoDBFunctionsWrapper:
         for ip_object in ip_objects:
             has_event = False
             for relationship in ip_object['relationships']:
-                if relationship['rel_type'] == 'Event':
+                if relationship['type'] == 'Event':
                     has_event = True
                     break
             if not has_event:
@@ -188,7 +261,7 @@ class MongoDBFunctionsWrapper:
     ### Update Functions ###
 
     # TODO: test methods of filtering relationships on events. One just iterates over relationships field.
-    # Other method does aggregation. There might also be a Python function that could filter the relationships array.
+    # Another method does aggregation. There might also be a Python function that could filter the relationships array.
 
     # version 1: just iterate, don't try anymore MongoDB tricks I don't know off-hand
     def update_event_relationships_all_ips(self):
@@ -196,8 +269,8 @@ class MongoDBFunctionsWrapper:
         for ip_object in ip_objects:
             ids_of_relationships_to_remove = []
             for relationship in ip_object['relationships']:
-                if relationship['rel_type'] == 'Event':
-                    event_id = relationship['object_id']
+                if relationship['type'] == 'Event':
+                    event_id = relationship['value']
                     event = self.events.find_one({'_id': event_id})
                     if not event:
                         ids_of_relationships_to_remove.append(relationship['_id'])

@@ -1,7 +1,6 @@
 from datetime import datetime
 from MongoDBFunctionsWrapper import MongoDBFunctionsWrapper
 
-# TODO: How do I test the accuracy of my functions?
 
 wrapper = MongoDBFunctionsWrapper()
 output_lines = ['Before:']
