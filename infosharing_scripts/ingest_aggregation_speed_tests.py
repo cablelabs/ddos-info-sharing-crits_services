@@ -34,6 +34,8 @@ class IngestAggregationSpeedTest:
         for stage in self.aggregation_pipeline:
             print stage
         for i in range(0, len(self.aggregation_pipeline)):
+            if i == 5:
+                continue
             sub_pipeline = self.aggregation_pipeline[:(i+1)]
             print "Doing query for first " + str(i+1) + " stages..."
             if self.is_events:
@@ -46,13 +48,13 @@ class IngestAggregationSpeedTest:
                 end = datetime.now()
             duration = end - start
             print "Time: " + str(duration)
-            if i >= 7:
-                print "Converting results to list..."
-                start = datetime.now()
-                objects = list(result)
-                end = datetime.now()
-                duration = end - start
-                print "Time to convert: " + str(duration)
+            # if i >= 7:
+            #     print "Converting results to list..."
+            #     start = datetime.now()
+            #     objects = list(result)
+            #     end = datetime.now()
+            #     duration = end - start
+            #     print "Time to convert: " + str(duration)
 
     def _add_aggregation_stages(self):
         """
@@ -240,13 +242,18 @@ class IngestAggregationSpeedTest:
                     }
                 }
         limit_stage = {'$limit': 20}
+        # Note how the sort stage is done early in the query. This speeds it up significantly so it takes around
+        # 30 seconds. If we put the sort right before the limit stage, the query takes 6-8 minutes.
+        # (last timing with sort right before limit: 0:06:46.269706, with debug: 0:07:44.626921)
+        # I believe this is because the original documents are indexed, whereas the new documents I make in intermediate
+        # stages will not be indexed.
         self.aggregation_pipeline = [
             match_user_submissions_stage,
+            sort_stage,
             unwind_relationships_stage,
             lookup_ips_stage,
             unwind_ip_field_stage,
             project_event_object_fields_stage,
-            sort_stage,
             limit_stage
         ]
 

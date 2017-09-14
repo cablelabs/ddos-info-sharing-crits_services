@@ -9,6 +9,7 @@ class MongoDBFunctionsWrapper:
         client = MongoClient()
         self.ips = client.crits.ips
         self.events = client.crits.events
+        self.source_access = client.crits.source_access
         self.users = client.crits.users
 
     ### Find Functions ###
@@ -227,6 +228,16 @@ class MongoDBFunctionsWrapper:
             count = self.ips.count({'source.instances.analyst': username})
             counts[username] = count
         return counts
+
+    def count_ips_by_owning_source(self):
+        counts = {}
+        source_names = self.source_access.find(projection={'name': 1})
+        for entry in source_names:
+            source_name = entry['name']
+            count = self.ips.count({'releasability.name': source_name})
+            counts[source_name] = count
+        return counts
+
 
     ### Remove Functions ###
 

@@ -1,4 +1,6 @@
 from datetime import datetime
+import pytz
+from tzlocal import get_localzone
 from tastypie import authorization
 from tastypie.authentication import MultiAuthentication
 
@@ -63,60 +65,34 @@ class DataDistributionResource(CRITsAPIResource):
         Add all important stages to the aggregation pipeline.
         :return: (nothing)
         """
-        self._match_ips_on_releasability()
-        self._project_ip_sub_object_fields()
-        self._lookup_related_events()
-        self._match_modified_since_parameter()
-        self._project_event_fields_to_top_level()
-        self._group_documents_by_event_id()
-        self._project_event_fields_to_nested_level()
-        self._group_documents_by_ip_with_event_data()
-        self._project_ip_address()
-        self._add_sort_to_pipeline()
-
-    def _match_ips_on_releasability(self):
-        """
-        Filter on IP objects so the output includes only IPs that contain a releasability associated with one of the
-        user's sources.
-        :return: (nothing)
-        """
         username = self.request.GET.get('username', '')
         source_list = user_sources(username)
-        match_stage = {'$match': {'releasability.name': {'$in': source_list}}}
-        self.aggregation_pipeline.append(match_stage)
-
-    # TODO: compare performance of using $unwind with performance of the complicated thing I did with $let
-    def _project_ip_sub_object_fields(self):
-        """
-        Adds an aggregation stage that projects the values of each IP's sub-objects to top-level fields.
-        :return: (nothing)
-        """
+        match_releasability_stage = {'$match': {'releasability.name': {'$in': source_list}}}
         reported_by_sub_object_type = IPOutputFields.get_object_type_from_field_name(IPOutputFields.REPORTED_BY)
-        reported_by_projection = {
-            '$map': {
-                'input': {
-                    '$filter': {
-                        'input': '$objects',
-                        'as': 'obj',
-                        'cond': {'$eq': ['$$obj.type', reported_by_sub_object_type]}
-                    }
-                },
-                'as': 'reporter_obj',
-                'in': '$$reporter_obj.value'
-            }
-        }
-        project_stage = {
+        project_ip_object_fields_stage = {
             '$project': {
                 '_id': 0,
                 IPOutputFields.IP_ADDRESS: '$ip',
                 'relationships': 1,
-                IPOutputFields.REPORTED_BY: reported_by_projection
+                IPOutputFields.REPORTED_BY: {
+                    '$map': {
+                        'input': {
+                            '$filter': {
+                                'input': '$objects',
+                                'as': 'obj',
+                                'cond': {'$eq': ['$$obj.type', reported_by_sub_object_type]}
+                            }
+                        },
+                        'as': 'reporter_obj',
+                        'in': '$$reporter_obj.value'
+                    }
+                }
             }
         }
         for ip_output_field in IPOutputFields.SUB_OBJECT_FIELDS:
             if ip_output_field != IPOutputFields.REPORTED_BY:
                 sub_object_type = IPOutputFields.get_object_type_from_field_name(ip_output_field)
-                project_stage['$project'][ip_output_field] = {
+                project_ip_object_fields_stage['$project'][ip_output_field] = {
                     '$let': {
                         'vars': {
                             'one_obj': {
@@ -135,34 +111,33 @@ class DataDistributionResource(CRITsAPIResource):
                         'in': '$$one_obj.value'
                     }
                 }
-        self.aggregation_pipeline.append(project_stage)
-
-    def _lookup_related_events(self):
-        """
-        Adds stages that copy events from Events collection that are related to the given IPs.
-        :return: (nothing)
-        """
+        self.aggregation_pipeline = [
+            match_releasability_stage,
+            project_ip_object_fields_stage
+        ]
+        modified_since = self.request.GET.get('modifiedSince', '')
+        if modified_since:
+            match_ip_received_stage = {'$match': {IPOutputFields.LAST_TIME_RECEIVED: {'$gte': modified_since}}}
+            self.aggregation_pipeline.append(match_ip_received_stage)
         unwind_relationships_stage = {'$unwind': '$relationships'}
-        lookup_stage = {
+        EVENT_FIELD = 'event'
+        lookup_events_stage = {
             '$lookup': {
                 'from': 'events',
                 'localField': 'relationships.value',
                 'foreignField': '_id',
-                'as': 'event'
+                'as': EVENT_FIELD
             }
         }
-        unwind_event_stage = {'$unwind': '$event'}
-        # NOTE: Even though we unwind 'event', we expect that there will only be one new document per each existing
-        # document because of how events are tied to IPs, and we already unwinded the relationships field.
-        stages = [unwind_relationships_stage, lookup_stage, unwind_event_stage]
-        self.aggregation_pipeline.extend(stages)
-
-    def _match_modified_since_parameter(self):
-        """
-        Adds a filter on events that occurred since the input 'modifiedSince' time.
-        :return: 
-        """
-        modified_since = self.request.GET.get('modifiedSince', '')
+        # NOTE: Unwinding the 'event' field should produce only one document because each relationship references one
+        # specific object by its ID field.
+        unwind_event_stage = {'$unwind': '$' + EVENT_FIELD}
+        middle_stages = [
+            unwind_relationships_stage,
+            lookup_events_stage,
+            unwind_event_stage
+        ]
+        self.aggregation_pipeline.extend(middle_stages)
         if modified_since:
             try:
                 modified_since_datetime = datetime.strptime(modified_since, "%Y-%m-%dT%H:%M:%S.%fZ")
@@ -171,111 +146,58 @@ class DataDistributionResource(CRITsAPIResource):
                     modified_since_datetime = datetime.strptime(modified_since, "%Y-%m-%d")
                 except ValueError:
                     raise ValueError("'modifiedSince' time not a properly formatted ISO string.")
-            # TODO: confirm that this query is correct
-            match = {'$match': {'event.created': {'$gte': modified_since_datetime}}}
-            self.aggregation_pipeline.append(match)
-
-    def _project_event_fields_to_top_level(self):
-        """
-        Adds stages that temporarily move fields nested in sub-objects of events to top-level fields of the documents.
-        :return: (nothing)
-        """
-        unwind_stage = {'$unwind': '$event.objects'}
-        project_stage = {
+            match_event_created_stage = {'$match': {'event.created': {'$gte': modified_since_datetime}}}
+            self.aggregation_pipeline.append(match_event_created_stage)
+        attack_type_sub_object_type = EventOutputFields.get_object_type_from_field_name(EventOutputFields.ATTACK_TYPES)
+        project_event_object_fields_stage = {
             '$project': {
                 IPOutputFields.IP_ADDRESS: 1,
-                'eventID': '$event._id',
-                'eventtimeRecorded': {
-                    '$dateToString': {
-                        'format': '%Y-%m-%dT%H:%M:%S.%LZ',
-                        'date': '$event.created'
-                    }
-                }
-            }
-        }
-        for ip_output_field in IPOutputFields.SUB_OBJECT_FIELDS:
-            project_stage['$project'][ip_output_field] = 1
-        for event_output_field in EventOutputFields.SUB_OBJECT_FIELDS:
-            sub_object_type = EventOutputFields.get_object_type_from_field_name(event_output_field)
-            project_stage['$project']['event' + event_output_field] = {
-                '$cond': {
-                    'if': {'$eq': ['$event.objects.type', sub_object_type]},
-                    'then': '$event.objects.value',
-                    'else': None
-                }
-            }
-        stages = [unwind_stage, project_stage]
-        self.aggregation_pipeline.extend(stages)
-
-    def _group_documents_by_event_id(self):
-        """
-        Adds a stage that groups repeated documents together by the Event ID.
-        :return: (nothing)
-        """
-        group_stage = {
-            '$group': {
-                '_id': '$eventID',
-                IPOutputFields.IP_ADDRESS: {'$first': '$'+IPOutputFields.IP_ADDRESS},
-                'eventtimeRecorded': {'$first': '$eventtimeRecorded'},
-                'eventattackTypes': {'$addToSet': '$eventattackTypes'}
-            }
-        }
-        for ip_output_field in IPOutputFields.SUB_OBJECT_FIELDS:
-            group_stage['$group'][ip_output_field] = {'$first': '$' + ip_output_field}
-        for event_output_field in EventOutputFields.SUB_OBJECT_FIELDS:
-            if event_output_field != EventOutputFields.ATTACK_TYPES:
-                group_stage['$group']['event' + event_output_field] = {'$max': '$event' + event_output_field}
-        self.aggregation_pipeline.append(group_stage)
-
-    def _project_event_fields_to_nested_level(self):
-        """
-        Adds a stage that moves event fields into a single field named 'event'.
-        :return: (nothing)
-        """
-        project_stage = {
-            '$project': {
-                '_id': 0,
-                'IPaddress': 1,
-                'event': {
-                    EventOutputFields.TIME_RECORDED: '$eventtimeRecorded',
+                EVENT_FIELD: {
+                    EventOutputFields.TIME_RECORDED: '$'+EVENT_FIELD+'.created',
                     EventOutputFields.ATTACK_TYPES: {
-                        '$filter': {
-                            'input': '$eventattackTypes',
-                            'as': 'attackType',
-                            'cond': {'$ne': ['$$attackType', None]}
+                        '$map': {
+                            'input': {
+                                '$filter': {
+                                    'input': '$'+EVENT_FIELD+'.objects',
+                                    'as': 'obj',
+                                    'cond': {'$eq': ['$$obj.type', attack_type_sub_object_type]}
+                                }
+                            },
+                            'as': 'reporter_obj',
+                            'in': '$$reporter_obj.value'
                         }
                     }
-                },
+                }
             }
         }
-        for ip_output_field in IPOutputFields.SUB_OBJECT_FIELDS:
-            project_stage['$project'][ip_output_field] = 1
         for event_output_field in EventOutputFields.SUB_OBJECT_FIELDS:
             if event_output_field != EventOutputFields.ATTACK_TYPES:
-                project_stage['$project']['event'][event_output_field] = '$event' + event_output_field
-        self.aggregation_pipeline.append(project_stage)
-
-    def _group_documents_by_ip_with_event_data(self):
-        """
-        Adds an aggregation stage that groups repeated documents together by the IP address, except that unlike the last
-        time we grouped by IP, this stage adds new fields based on the events associated with the IP.
-        :return: (nothing)
-        """
-        group_stage = {
+                sub_object_type = EventOutputFields.get_object_type_from_field_name(event_output_field)
+                project_event_object_fields_stage['$project'][EVENT_FIELD][event_output_field] = {
+                    '$let': {
+                        'vars': {
+                            'one_obj': {
+                                '$arrayElemAt': [
+                                    {
+                                        '$filter': {
+                                            'input': '$' + EVENT_FIELD + '.objects',
+                                            'as': 'obj',
+                                            'cond': {'$eq': ['$$obj.type', sub_object_type]}
+                                        }
+                                    },
+                                    0
+                                ]
+                            }
+                        },
+                        'in': '$$one_obj.value'
+                    }
+                }
+        group_by_ip_stage = {
             '$group': {
                 '_id': '$' + IPOutputFields.IP_ADDRESS,
                 IPOutputFields.EVENTS: {'$push': '$event'}
             }
         }
-        for ip_output_field in IPOutputFields.SUB_OBJECT_FIELDS:
-            group_stage['$group'][ip_output_field] = {'$first': '$' + ip_output_field}
-        self.aggregation_pipeline.append(group_stage)
-
-    def _project_ip_address(self):
-        """
-        Adds an aggregation stage that simply remaps the "_id" field to the IP address field.
-        :return: (nothing)
-        """
         project_ip_fields_stage = {
             '$project': {
                 '_id': 0,
@@ -284,14 +206,15 @@ class DataDistributionResource(CRITsAPIResource):
             }
         }
         for ip_output_field in IPOutputFields.SUB_OBJECT_FIELDS:
+            project_event_object_fields_stage['$project'][ip_output_field] = 1
+            group_by_ip_stage['$group'][ip_output_field] = {'$first': '$' + ip_output_field}
             project_ip_fields_stage['$project'][ip_output_field] = 1
-        self.aggregation_pipeline.append(project_ip_fields_stage)
-
-    def _add_sort_to_pipeline(self):
-        """
-        Defines the way to sort the IP addresses, and adds it to the aggregation pipeline.
-        :return: (nothing)
-        """
+        final_stages = [
+            project_event_object_fields_stage,
+            group_by_ip_stage,
+            project_ip_fields_stage
+        ]
+        self.aggregation_pipeline.extend(final_stages)
         sort_by = self.request.GET.get('sortBy', '')
         if sort_by:
             if sort_by not in IPOutputFields.ALL_FIELDS or sort_by == IPOutputFields.EVENTS:
@@ -301,6 +224,13 @@ class DataDistributionResource(CRITsAPIResource):
             sort_order_number = -1 if (sort_order == 'desc') else 1
             sort_stage = {'$sort': {sort_by: sort_order_number}}
             self.aggregation_pipeline.append(sort_stage)
+        limit = self.request.GET.get('limit', '20')
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError):
+            raise ValueError("'limit' parameter not an integer value.")
+        limit_stage = {'$limit': limit}
+        self.aggregation_pipeline.append(limit_stage)
 
     def dehydrate(self, bundle):
         """
@@ -318,6 +248,9 @@ class DataDistributionResource(CRITsAPIResource):
                 fields_to_remove.append(field_name)
         for field in fields_to_remove:
             del bundle.data[field]
+        # Convert 'lastTimeReceived' to UTC.
+        last_time_received = bundle.data[IPOutputFields.LAST_TIME_RECEIVED]
+        bundle.data[IPOutputFields.LAST_TIME_RECEIVED] = self.local_time_string_to_utc_string(last_time_received)
         # Convert appropriate fields of IP object to integers.
         for field_name in IPOutputFields.INTEGER_FIELDS:
             if bundle.data.get(field_name):
@@ -342,6 +275,9 @@ class DataDistributionResource(CRITsAPIResource):
                         fields_to_remove.append(field_name)
                 for field in fields_to_remove:
                     del bundle.data[IPOutputFields.EVENTS][i][field]
+                # Convert 'timeRecorded' to UTC.
+                time_recorded = bundle.data[IPOutputFields.EVENTS][i][EventOutputFields.TIME_RECORDED]
+                bundle.data[IPOutputFields.EVENTS][i][EventOutputFields.TIME_RECORDED] = self.local_time_to_utc_string(time_recorded)
                 # Convert appropriate fields of event to integers.
                 for integer_field in EventOutputFields.INTEGER_FIELDS:
                     if bundle.data[IPOutputFields.EVENTS][i].get(integer_field):
@@ -351,6 +287,23 @@ class DataDistributionResource(CRITsAPIResource):
                         except (TypeError, ValueError):
                             pass
         return bundle
+
+    @staticmethod
+    def local_time_string_to_utc_string(local_time):
+        # local_time as string
+        local_timezone = get_localzone()
+        local_datetime = datetime.strptime(local_time, "%Y-%m-%dT%H:%M:%S.%fZ")
+        localized_time = local_timezone.localize(local_datetime)
+        utc_time = localized_time.astimezone(pytz.utc)
+        return utc_time.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+
+    @staticmethod
+    def local_time_to_utc_string(local_datetime):
+        # local_time as datetime
+        local_timezone = get_localzone()
+        localized_time = local_timezone.localize(local_datetime)
+        utc_time = localized_time.astimezone(pytz.utc)
+        return utc_time.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
     def alter_list_data_to_serialize(self, request, data):
         """

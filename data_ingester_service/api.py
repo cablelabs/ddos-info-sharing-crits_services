@@ -7,7 +7,6 @@ from crits.core.api import CRITsApiKeyAuthentication, CRITsSessionAuthentication
 from crits.core.api import CRITsSerializer, CRITsAPIResource
 from crits.core.user_tools import get_user_organization, user_sources
 from crits.events.event import Event
-from crits.ips.ip import IP
 
 from handlers import save_ingest_data
 from vocabulary import IPOutputFields, EventOutputFields
@@ -36,6 +35,8 @@ class DataIngesterResource(CRITsAPIResource):
         path_to_schema = '/data/Data-Ingester-Payload-Schema.json'
         schema_file = open(path_to_schema, 'r')
         self.input_schema = json.load(schema_file)
+        self.request = None
+        self.aggregation_pipeline = []
 
     def obj_create(self, bundle, **kwargs):
         """
@@ -87,15 +88,11 @@ class DataIngesterResource(CRITsAPIResource):
         :param kwargs:
         :return: list of objects
         """
-        # PROBLEM: What if users submit their own IP? We distinguished submitter from owner using releasability, but what if submitter was the owner?
         if request:
             self.request = request
         else:
             self.request = kwargs['bundle'].request
-        #self.aggregation_pipeline = []
-        self._add_aggregation_stages_start_at_events()
-        for stage in self.aggregation_pipeline:
-            print stage
+        self._add_aggregation_stages()
         collation = {
             'locale': 'en_US_POSIX',
             'numericOrdering': True
@@ -104,115 +101,11 @@ class DataIngesterResource(CRITsAPIResource):
         objects = list(result)
         return objects
 
-    # This version aggregates from IP collection.
     def _add_aggregation_stages(self):
         """
-        Add all important stages to the aggregation pipeline.
+        Initialize all stages for a MongoDB aggregation query to get all events submitted by the requesting user.
         :return: (nothing)
         """
-        username = self.request.GET.get('username', '')
-        user_organization = get_user_organization(username)
-        # TODO: This may not be correct way to get user submitted data, so fix it.
-        match_user_submissions_stage = {
-            '$match': {
-                'source.name': user_organization,
-                'releasability.name': {'$ne': user_organization}
-            }
-        }
-        project_cleanup_ip_fields_stage = {
-            '$project': {
-                '_id': 0,
-                IPOutputFields.IP_ADDRESS: '$ip',
-                'relationships': 1,
-            }
-        }
-        unwind_relationships_stage = {'$unwind': '$relationships'}
-        EVENT_FIELD = 'event'
-        lookup_events_stage = {
-            '$lookup': {
-                'from': 'events',
-                'localField': 'relationships.value',
-                'foreignField': '_id',
-                'as': EVENT_FIELD
-            }
-        }
-        # NOTE: Even though we unwind 'event', there should be only one Event because the ingest service creates only
-        # one relationship to any given Event.
-        unwind_event_stage = {'$unwind': '$'+EVENT_FIELD}
-        # Filter events based on what user submitted, since other users may have submitted events to the same IPs.
-        match_event_source_stage = {
-            '$match': {
-                EVENT_FIELD+'.source.name': user_organization
-            }
-        }
-        # This field is used simply to sort the data based approximately on the time the user submitted these events.
-        EVENT_TIME_RECORDED_FIELD = 'eventTimeRecorded'
-        attack_type_sub_object_type = EventOutputFields.get_object_type_from_field_name(EventOutputFields.ATTACK_TYPES)
-        project_event_object_fields_stage = {
-            '$project': {
-                IPOutputFields.IP_ADDRESS: 1,
-                EVENT_TIME_RECORDED_FIELD: {
-                    '$dateToString': {
-                        'format': '%Y-%m-%dT%H:%M:%S.%LZ',
-                        'date': '$'+EVENT_FIELD+'.created'
-                    }
-                },
-                EventOutputFields.ATTACK_TYPES: {
-                    # Hopefully answers "How do I extract 'value' from each object whose type is 'Attack Type'?"
-                    # TODO: now make sure this works
-                    '$map': {
-                        'input': {
-                            '$filter': {
-                                'input': '$'+EVENT_FIELD+'.objects',
-                                'as': 'obj',
-                                'cond': {'$eq': ['$$obj.type', attack_type_sub_object_type]}
-                            }
-                        },
-                        'as': 'reporter_obj',
-                        'in': '$$reporter_obj.value'
-                    }
-                }
-            }
-        }
-        for event_output_field in EventOutputFields.SUB_OBJECT_FIELDS:
-            if event_output_field != EventOutputFields.ATTACK_TYPES:
-                sub_object_type = EventOutputFields.get_object_type_from_field_name(event_output_field)
-                project_event_object_fields_stage['$project'][event_output_field] = {
-                    '$let': {
-                        'vars': {
-                            'one_obj': {
-                                '$arrayElemAt': [
-                                    {
-                                        '$filter': {
-                                            'input': '$'+EVENT_FIELD+'.objects',
-                                            'as': 'obj',
-                                            'cond': {'$eq': ['$$obj.type', sub_object_type]}
-                                        }
-                                    },
-                                    0
-                                ]
-                            }
-                        },
-                        'in': '$$one_obj.value'
-                    }
-                }
-        sort_stage = {'$sort': {EVENT_TIME_RECORDED_FIELD: -1}}
-        limit = self.request.GET.get('limit', '20')
-        limit_stage = {'$limit': int(limit)}
-        self.aggregation_pipeline = [
-            match_user_submissions_stage,
-            project_cleanup_ip_fields_stage,
-            unwind_relationships_stage,
-            lookup_events_stage,
-            unwind_event_stage,
-            match_event_source_stage,
-            project_event_object_fields_stage,
-            sort_stage,
-            limit_stage
-        ]
-
-    def _add_aggregation_stages_start_at_events(self):
-        # Get all data submitted by user, but query is based on Events collection instead of IPs collection.
         username = self.request.GET.get('username', '')
         user_organization = get_user_organization(username)
         match_user_submissions_stage = {
@@ -221,8 +114,8 @@ class DataIngesterResource(CRITsAPIResource):
             }
         }
         sort_stage = {'$sort': {'created': -1}}
-        # NOTE: The next two fields we unwind should only produce one document each, because each Event should be
-        # associated with exactly one IP.
+        # NOTE: The two fields we unwind should only produce one document each, because each Event is associated with
+        # exactly one IP.
         unwind_relationships_stage = {'$unwind': '$relationships'}
         IP_FIELD = 'ip_object'
         lookup_ips_stage = {
@@ -237,8 +130,8 @@ class DataIngesterResource(CRITsAPIResource):
         attack_type_sub_object_type = EventOutputFields.get_object_type_from_field_name(EventOutputFields.ATTACK_TYPES)
         project_event_object_fields_stage = {
             '$project': {
+                '_id': 0,
                 IPOutputFields.IP_ADDRESS: '$'+IP_FIELD+'.ip',
-                'created': 1,
                 EventOutputFields.ATTACK_TYPES: {
                     '$map': {
                         'input': {
@@ -277,7 +170,11 @@ class DataIngesterResource(CRITsAPIResource):
                     }
                 }
         limit = self.request.GET.get('limit', '20')
-        limit_stage = {'$limit': int(limit)}
+        try:
+            limit = int(limit)
+        except (TypeError, ValueError):
+            raise ValueError("'limit' parameter not an integer value.")
+        limit_stage = {'$limit': limit}
         self.aggregation_pipeline = [
             match_user_submissions_stage,
             sort_stage,
@@ -287,63 +184,6 @@ class DataIngesterResource(CRITsAPIResource):
             project_event_object_fields_stage,
             limit_stage
         ]
-
-    def _group_documents_by_ip_with_event_data(self):
-        """
-        Adds an aggregation stage that groups repeated documents together by the IP address, except that unlike the last
-        time we grouped by IP, this stage adds new fields based on the events associated with the IP.
-        :return: (nothing)
-        """
-        sort_stage = {'$sort': {IPOutputFields.IP_ADDRESS: 1}}
-        group_stage = {
-            '$group': {
-                '_id': '$' + IPOutputFields.IP_ADDRESS,
-                'maxTimeRecorded': {'$max': '$event.timeRecorded'},
-                IPOutputFields.EVENTS: {'$push': '$event'}
-            }
-        }
-        self.aggregation_pipeline.append(sort_stage)
-        self.aggregation_pipeline.append(group_stage)
-
-    def _project_ip_address(self):
-        """
-        Adds an aggregation stage that simply remaps the "_id" field to the IP address field.
-        :return: (nothing)
-        """
-        project_ip_fields_stage = {
-            '$project': {
-                '_id': 0,
-                IPOutputFields.IP_ADDRESS: '$_id',
-                IPOutputFields.EVENTS: {
-                    '$filter': {
-                        'input': '$events',
-                        'as': 'event',
-                        'cond': {'$eq': ['$$event.timeRecorded', '$maxTimeRecorded']}
-                    }
-                }
-            }
-        }
-        self.aggregation_pipeline.append(project_ip_fields_stage)
-
-    def _project_event_fields(self):
-        unwind = {'$unwind': '$events'}
-        project = {
-            '$project': {
-                IPOutputFields.IP_ADDRESS: 1
-            }
-        }
-        for event_output_field in EventOutputFields.SUB_OBJECT_FIELDS:
-            project['$project'][event_output_field] = '$events.' + event_output_field
-        stages = [unwind, project]
-        self.aggregation_pipeline.extend(stages)
-
-    def _add_sort_to_pipeline(self):
-        """
-        Defines the way to sort the IP addresses, and adds it to the aggregation pipeline.
-        :return: (nothing)
-        """
-        sort_stage = {'$sort': {IPOutputFields.LAST_TIME_RECEIVED: -1}}
-        self.aggregation_pipeline.append(sort_stage)
 
     def dehydrate(self, bundle):
         """

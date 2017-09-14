@@ -69,6 +69,24 @@ def print_ips_per_user():
         user_counts_file.close()
 
 
+def print_ips_by_owning_source():
+    global save_to_file, wrapper, time_now_str
+    first_line = "source,ips"
+    print first_line
+    output_lines = [first_line]
+    source_ips_count = wrapper.count_ips_by_owning_source()
+    for name, value in source_ips_count.iteritems():
+        next_line = name + "," + str(value)
+        print next_line
+        output_lines.append(next_line)
+    if save_to_file:
+        output_lines = ['{0}\n'.format(line) for line in output_lines]
+        source_counts_file = open('ips_per_owning_source_'+time_now_str+'.txt', 'w')
+        source_counts_file.writelines(output_lines)
+        source_counts_file.close()
+
+
 print_quick_summary()
 print_submissions_counts()
 print_ips_per_user()
+print_ips_by_owning_source()
