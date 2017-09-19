@@ -92,6 +92,12 @@ class MongoDBFunctionsWrapper:
     def count_events(self):
         return self.events.count()
 
+    def count_sources(self):
+        return self.source_access.count()
+
+    def count_users(self):
+        return self.users.count()
+
     def count_ips_by_status(self):
         counts = {}
         status_options = ['New', 'In Progress', 'Analyzed']
@@ -229,6 +235,11 @@ class MongoDBFunctionsWrapper:
             counts[username] = count
         return counts
 
+    def count_submissions_by_user(self):
+        counts = {}
+        current_user_counts = 0
+        return counts
+
     def count_ips_by_owning_source(self):
         counts = {}
         source_names = self.source_access.find(projection={'name': 1})
@@ -237,6 +248,64 @@ class MongoDBFunctionsWrapper:
             count = self.ips.count({'releasability.name': source_name})
             counts[source_name] = count
         return counts
+
+    def count_events_by_attack_type(self):
+        """
+        For each type of attack, count the number of Events with that type of attack.
+        :return: (nothing)
+        """
+        counts = {}
+        unwind_objects_stage = {'$unwind': '$objects'}
+        match_attack_type_object_stage = {
+            '$match': {
+                'objects.type': 'Attack Type'
+            }
+        }
+        group_attack_type_value_stage = {
+            '$group': {
+                '_id': '$objects.value',
+                'count': {'$sum': 1}
+            }
+        }
+        pipeline = [
+            unwind_objects_stage,
+            match_attack_type_object_stage,
+            group_attack_type_value_stage
+        ]
+        results = self.events.aggregate(pipeline)
+        for result in results:
+            attack_type = result['_id']
+            count = result['count']
+            counts[attack_type] = count
+        return counts
+
+    def count_ips_reported_by_multiple_sources(self):
+        unwind_objects_stage = {'$unwind': '$objects'}
+        match_multiple_reporters_stage = {
+            '$match': {
+                'objects.type': 'Number of Reporters',
+                'objects.value': {'$gt': "1"}
+            }
+        }
+        group_count_stage = {
+            '$group': {
+                '_id': None,
+                'count': {'$sum': 1}
+            }
+        }
+        pipeline = [
+            unwind_objects_stage,
+            match_multiple_reporters_stage,
+            group_count_stage
+        ]
+        collation = {
+            'locale': 'en_US_POSIX',
+            'numericOrdering': True
+        }
+        counts = self.ips.aggregate(pipeline, collation=collation)
+        for count in counts:
+            # Return first result, because there should only be one result.
+            return count['count']
 
 
     ### Remove Functions ###
@@ -294,3 +363,6 @@ class MongoDBFunctionsWrapper:
                 }
             }
             self.ips.update_many(filter=query, update=update)
+
+    ### Complex Aggregation Functions ###
+

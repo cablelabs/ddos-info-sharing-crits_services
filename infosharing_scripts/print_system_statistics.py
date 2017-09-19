@@ -86,6 +86,7 @@ def print_ips_by_owning_source():
         source_counts_file.close()
 
 
+print wrapper.count_events_by_attack_type()
 print_quick_summary()
 print_submissions_counts()
 print_ips_per_user()
