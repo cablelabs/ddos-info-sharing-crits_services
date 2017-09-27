@@ -1,7 +1,8 @@
 import csv
 from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from pymongo import MongoClient
-
+# TODO: why do I use relativedelta instead of timedelta?
 
 class OldDataPurger:
 
@@ -170,6 +171,78 @@ class OldDataPurger:
         }
         self.ips.delete_many(filter=query)
         ip_deletion_log.close()
+
+    ### Find Functions ###
+
+    def find_ips_ids(self):
+        cursor = self.ips.find(projection={})
+        ips_ids = []
+        for entry in cursor:
+            ips_ids.append(entry['_id'])
+        return ips_ids
+
+    def find_new_ips_ids(self):
+        one_month_ago = datetime.today() - relativedelta(days=70)
+        # Filter based on 'modified' date because the "old" IPs are those whose latest Event is still considered "old",
+        # and IPs with new Events may have been created long before their latest Event was added.
+        query = {
+            'modified': {
+                '$gte': one_month_ago
+            }
+        }
+        cursor = self.ips.find(filter=query, projection={})
+        ips_ids = []
+        for entry in cursor:
+            ips_ids.append(entry['_id'])
+        return ips_ids
+
+    def find_events_ids(self):
+        cursor = self.events.find(projection={})
+        events_ids = []
+        for entry in cursor:
+            events_ids.append(entry['_id'])
+        return events_ids
+
+    def find_new_events_ids(self):
+        one_month_ago = datetime.today() - relativedelta(days=70)
+        query = {
+            'created': {
+                '$gte': one_month_ago
+            }
+        }
+        cursor = self.events.find(filter=query, projection={})
+        events_ids = []
+        for entry in cursor:
+            events_ids.append(entry['_id'])
+        return events_ids
+
+    def find_ips_with_invalid_relationships(self):
+        """
+        Find all IPs with one or more invalid relationships.
+        :return: dict
+        """
+        # TODO: Figure out how to make this faster. It runs very slow now when there are many IPs.
+        ip_objects = self.ips.find()
+        ids_of_bad_ips = []
+        for ip_object in ip_objects:
+            for relationship in ip_object['relationships']:
+                if relationship['type'] == 'Event':
+                    event_id = relationship['value']
+                    event = self.events.find_one({'_id': event_id})
+                    if not event:
+                        ids_of_bad_ips.append(ip_object['_id'])
+                        break
+        query = {
+            '_id': {
+                '$in': ids_of_bad_ips
+            }
+        }
+        projection = {
+            'ip': 1,
+            'relationships': 1
+        }
+        bad_ips = self.ips.find(filter=query, projection=projection)
+        return bad_ips
 
 data_purger = OldDataPurger()
 data_purger.run()

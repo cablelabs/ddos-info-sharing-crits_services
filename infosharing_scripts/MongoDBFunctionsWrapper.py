@@ -14,75 +14,8 @@ class MongoDBFunctionsWrapper:
 
     ### Find Functions ###
 
-    def find_ips_ids(self):
-        cursor = self.ips.find(projection={})
-        ips_ids = []
-        for entry in cursor:
-            ips_ids.append(entry['_id'])
-        return ips_ids
-
-    def find_new_ips_ids(self):
-        one_month_ago = datetime.today() - relativedelta(days=70)
-        # Filter based on 'modified' date because the "old" IPs are those whose latest Event is still considered "old",
-        # and IPs with new Events may have been created long before their latest Event was added.
-        query = {
-            'modified': {
-                '$gte': one_month_ago
-            }
-        }
-        cursor = self.ips.find(filter=query, projection={})
-        ips_ids = []
-        for entry in cursor:
-            ips_ids.append(entry['_id'])
-        return ips_ids
-
-    def find_events_ids(self):
-        cursor = self.events.find(projection={})
-        events_ids = []
-        for entry in cursor:
-            events_ids.append(entry['_id'])
-        return events_ids
-
-    def find_new_events_ids(self):
-        one_month_ago = datetime.today() - relativedelta(days=70)
-        query = {
-            'created': {
-                '$gte': one_month_ago
-            }
-        }
-        cursor = self.events.find(filter=query, projection={})
-        events_ids = []
-        for entry in cursor:
-            events_ids.append(entry['_id'])
-        return events_ids
-
-    def find_ips_with_invalid_relationships(self):
-        """
-        Find all IPs with one or more invalid relationships.
-        :return: dict
-        """
-        # TODO: Figure out how to make this faster. It runs very slow now when there are many IPs.
-        ip_objects = self.ips.find()
-        ids_of_bad_ips = []
-        for ip_object in ip_objects:
-            for relationship in ip_object['relationships']:
-                if relationship['type'] == 'Event':
-                    event_id = relationship['value']
-                    event = self.events.find_one({'_id': event_id})
-                    if not event:
-                        ids_of_bad_ips.append(ip_object['_id'])
-                        break
-        query = {
-            '_id': {
-                '$in': ids_of_bad_ips
-            }
-        }
-        projection = {
-            'ip': 1,
-            'relationships': 1
-        }
-        bad_ips = self.ips.find(filter=query, projection=projection)
-        return bad_ips
+    def find_users(self):
+        return self.users.find()
 
     ### Count Functions ###
 
@@ -92,36 +25,137 @@ class MongoDBFunctionsWrapper:
     def count_events(self):
         return self.events.count()
 
-    def count_sources(self):
-        return self.source_access.count()
-
-    def count_users(self):
-        return self.users.count()
-
-    def count_ips_by_status(self):
-        counts = {}
-        status_options = ['New', 'In Progress', 'Analyzed']
-        for status in status_options:
-            query = {'status': status}
-            counts[status] = self.ips.count(filter=query)
-        return counts
-
-    def count_unique_ips_per_month(self):
-        counts = {}
-        start_month = datetime(year=2017, month=6, day=1)
-        current_month = start_month
-        today = datetime.today()
-        while current_month < today:
-            next_month = current_month + relativedelta(months=1)
-            query = {
-                'created': {
-                    '$gte': current_month,
-                    '$lt': next_month
+    def count_ips_reported_by_multiple_sources(self):
+        pipeline = [
+            {'$unwind': '$objects'},
+            {
+                '$match': {
+                    'objects.type': 'Number of Reporters',
+                    'objects.value': {'$gt': "1"}
+                }
+            },
+            {
+                '$group': {
+                    '_id': None,
+                    'count': {'$sum': 1}
                 }
             }
-            current_month_str = current_month.strftime("%Y-%m")
-            counts[current_month_str] = self.ips.count(filter=query)
-            current_month = next_month
+        ]
+        collation = {
+            'locale': 'en_US_POSIX',
+            'numericOrdering': True
+        }
+        counts = self.ips.aggregate(pipeline, collation=collation, allowDiskUse=True)
+        for count in counts:
+            # Return first result, because there should only be one result.
+            return count['count']
+
+    def top_attack_type_counts(self, number_of_attack_types=10):
+        pipeline = [
+            {'$unwind': '$objects'},
+            {'$match': {'objects.type': 'Attack Type'}},
+            {
+                '$group': {
+                    '_id': '$objects.value',
+                    'count': {'$sum': 1}
+                }
+            },
+            {'$sort': {'count': -1}},
+            {'$limit': number_of_attack_types}
+        ]
+        results = self.events.aggregate(pipeline, allowDiskUse=True)
+        counts = {}
+        for result in results:
+            attack_type = result['_id']
+            count = result['count']
+            counts[attack_type] = count
+        return counts
+
+    def top_attacking_country_counts(self, number_of_attack_types=10):
+        pipeline = [
+            {
+                '$project': {
+                    '_id': 0,
+                    'objects': 1,
+                    'numberOfEvents': {'$size': '$relationships'}
+                }
+            },
+            {'$unwind': '$objects'},
+            {'$match': {'objects.type': 'Country'}},
+            {
+                '$project': {
+                    'country': '$objects.value',
+                    'numberOfEvents': 1
+                }
+            },
+            {
+                '$group': {
+                    '_id': '$country',
+                    'count': {'$sum': '$numberOfEvents'}
+                }
+            },
+            {'$sort': {'count': -1}},
+            {'$limit': number_of_attack_types}
+        ]
+        results = self.ips.aggregate(pipeline, allowDiskUse=True)
+        counts = {}
+        for result in results:
+            country = result['_id']
+            count = result['count']
+            counts[country] = count
+        return counts
+
+    def count_submissions_from_given_user(self, username):
+        counts = {
+            'ips': self.ips.count({'source.instances.analyst': username}),
+            'events': self.events.count({'source.instances.analyst': username})
+        }
+        return counts
+
+    def count_submissions_per_user(self):
+        # Count the number of IPs and Events submitted by each user.
+        counts = {}
+        for user in self.users.find():
+            username = user['username']
+            counts_per_user = {
+                'ips': self.ips.count({'source.instances.analyst': username}),
+                'events': self.events.count({'source.instances.analyst': username})
+            }
+            counts[username] = counts_per_user
+        return counts
+
+    def top_attacking_asn_counts(self, number_of_attack_types=10):
+        pipeline = [
+            {
+                '$project': {
+                    '_id': 0,
+                    'objects': 1,
+                    'numberOfEvents': {'$size': '$relationships'}
+                }
+            },
+            {'$unwind': '$objects'},
+            {'$match': {'objects.type': 'AS Number'}},
+            {
+                '$project': {
+                    'asn': '$objects.value',
+                    'numberOfEvents': 1
+                }
+            },
+            {
+                '$group': {
+                    '_id': '$asn',
+                    'count': {'$sum': '$numberOfEvents'}
+                }
+            },
+            {'$sort': {'count': -1}},
+            {'$limit': number_of_attack_types}
+        ]
+        results = self.ips.aggregate(pipeline, allowDiskUse=True)
+        counts = {}
+        for result in results:
+            as_number = result['_id']
+            count = result['count']
+            counts[as_number] = count
         return counts
 
     def count_submissions_per_period(self, period='day'):
@@ -171,27 +205,29 @@ class MongoDBFunctionsWrapper:
             current_period = next_period
         return counts
 
-    #TODO: Think if this is best way to count what I want. Are my assumptions valid?
-    #TODO: How do I prevent overlap in IPs when counting? Do I want to prevent overlap?
-    #TODO: possibly create another function that counts number of events they submitted.
-    def count_ips_by_user(self):
-        counts = {}
-        for user in self.users.find():
-            username = user['username']
-            count = self.ips.count({'source.instances.analyst': username})
-            counts[username] = count
-        return counts
-
-    def count_submissions_by_user(self):
-        counts = {}
-        current_user_counts = 0
-        return counts
-
-    def count_ips_by_owning_source(self):
+    def count_submissions_per_owning_source(self):
         counts = {}
         source_names = self.source_access.find(projection={'name': 1})
         for entry in source_names:
             source_name = entry['name']
-            count = self.ips.count({'releasability.name': source_name})
-            counts[source_name] = count
+            pipeline = [
+                {'$match': {'releasability.name': source_name}},
+                {'$project': {'numberOfEvents': {'$size': '$relationships'}}},
+                {
+                    '$group': {
+                        '_id': None,
+                        'count': {'$sum': '$numberOfEvents'}
+                    }
+                },
+            ]
+            aggregation_counts = self.ips.aggregate(pipeline, allowDiskUse=True)
+            number_of_events = 0
+            # Note: There should only be one result, but still need for-loop to get value of result.
+            for count in aggregation_counts:
+                number_of_events = count['count']
+            counts_per_source = {
+                'ips': self.ips.count({'releasability.name': source_name}),
+                'events': number_of_events
+            }
+            counts[source_name] = counts_per_source
         return counts
