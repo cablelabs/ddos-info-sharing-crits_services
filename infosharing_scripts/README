@@ -1,3 +1,4 @@
 This directory simply contains useful scripts for the DDoS Information Sharing project.
 
 Also, make sure to fill in the credentials in the file 'credentials.json' for the email that will send reports.
+Lastly, there should be a sub-directory called "detailed_statistics" where some of the additional statistics are saved.

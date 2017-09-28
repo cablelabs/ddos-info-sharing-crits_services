@@ -1,6 +1,6 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from dateutil.relativedelta import relativedelta
-from pymongo import MongoClient, DESCENDING
+from pymongo import MongoClient
 
 
 class MongoDBFunctionsWrapper:
