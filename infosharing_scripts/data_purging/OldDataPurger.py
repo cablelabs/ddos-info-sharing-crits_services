@@ -75,6 +75,21 @@ class OldDataPurger:
             if modified_datetime >= one_month_ago:
                 print "Error"
 
+    def delete_ips(self, number_to_remove=10):
+        ip_object = self.ips.find_one(skip=(number_to_remove-1), sort=[('modified', 1)])
+        modified_datetime = ip_object['modified']
+        query = {'modified': {'$lte': modified_datetime}}
+        # TODO: delete events corresponding to the IPs we're going to delete.
+        ip_objects = self.ips.find(filter=query)
+        for ip_object in ip_objects:
+            for relationship in ip_object['relationships']:
+                if relationship['type'] == 'Event':
+                    event_id = relationship['value']
+                    #delete_result = self.events.delete_one(id=event_id)
+        #number_deleted = self.ips.delete_many(filter=delete_query)
+        #print number_deleted
+
 
 purger = OldDataPurger()
-purger.run()
+#purger.run()
+purger.delete_ips(300000)
