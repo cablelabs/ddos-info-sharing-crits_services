@@ -1,6 +1,4 @@
-from datetime import datetime
-from dateutil.relativedelta import relativedelta
-import pandas
+from datetime import datetime, timedelta
 from pymongo import MongoClient
 
 
@@ -26,7 +24,7 @@ class MongoDBFunctionsWrapper:
     def count_events(self):
         return self.events.count()
 
-    def count_ips_multiple_sources(self):
+    def count_ips_multiple_reporters(self):
         """
         Count the number of IP addresses that have been reported by multiple sources.
         :return:
@@ -39,13 +37,12 @@ class MongoDBFunctionsWrapper:
                     'objects.value': {'$gt': "1"}
                 }
             },
-            # {
-            #     '$group': {
-            #         '_id': None,
-            #         'count': {'$sum': 1}
-            #     }
-            # }
-            {'$count': 'count'}
+            {
+                '$group': {
+                    '_id': None,
+                    'count': {'$sum': 1}
+                }
+            }
         ]
         collation = {
             'locale': 'en_US_POSIX',
@@ -56,9 +53,9 @@ class MongoDBFunctionsWrapper:
             # Return first result, because there should only be one result.
             return count['count']
 
-    def count_events_multiple_sources(self):
+    def count_events_multiple_reporters(self):
         """
-        Count the number of events corresponding to IP addresses that have been reported by multiple sources.
+        Count the number of Events corresponding to IP addresses that have been reported by multiple sources.
         :return: int
         """
         pipeline = [
@@ -92,7 +89,7 @@ class MongoDBFunctionsWrapper:
             # Return first result, because there should only be one result.
             return count['count']
 
-    def top_attack_type_counts(self, number_of_attack_types=10):
+    def count_events_top_attack_types(self, number_of_attack_types=10):
         pipeline = [
             {'$unwind': '$objects'},
             {'$match': {'objects.type': 'Attack Type'}},
@@ -113,8 +110,14 @@ class MongoDBFunctionsWrapper:
             counts[attack_type] = count
         return counts
 
-    # TODO: work from here, as this is best version
-    def count_events_top_attack_types_multiple_sources_v3(self, number_of_attack_types=10):
+    def count_events_top_attack_types_multiple_reporters(self, number_of_attack_types=10):
+        """
+        Find the top attack types based on number of events with a given attack type and are for IPs with multiple
+        reporters. Return the number of events for the top attack types.
+        :param number_of_attack_types: The maximum number of attack types to return.
+        :type number_of_attack_types: int
+        :return: array of 2-tuples whose type is (string, int)
+        """
         pipeline = [
             {'$unwind': '$relationships'},
             {
@@ -135,39 +138,29 @@ class MongoDBFunctionsWrapper:
             },
             {'$unwind': '$objects'},
             {'$match': {'objects.type': 'Attack Type'}},
+            {'$project': {'attackType': '$objects.value'}},
             {
-                '$project': {
-                    'attackType': '$objects.value'
+                '$group': {
+                    '_id': 'attackType',
+                    'count': {'$sum': 1}
                 }
             },
-            #{'$count': "count"}
-            # {
-            #     '$group': {
-            #         '_id': 'attackType',
-            #         'count': {'$sum': 1}
-            #     }
-            # },
-            # {'$sort': {'count': -1}},
-            # {'$limit': number_of_attack_types}
+            {'$sort': {'count': -1}},
+            {'$limit': number_of_attack_types}
         ]
         collation = {
             'locale': 'en_US_POSIX',
             'numericOrdering': True
         }
-        attack_types = self.events.aggregate(pipeline=pipeline, collation=collation, allowDiskUse=True)
-        attack_types = list(attack_types)
-        attack_types_dataframe = pandas.DataFrame.from_records(attack_types)
-        results = attack_types_dataframe.groupby(columns=['attackType']).size()
-        #attack_types_dataframe = attack_types_dataframe.assign(attack_type=attack_types_dataframe.attackType)
-
+        attack_type_counts = self.events.aggregate(pipeline=pipeline, collation=collation, allowDiskUse=True)
         counts = {}
-        for result in results:
+        for result in attack_type_counts:
             attack_type = result['_id']
             count = result['count']
             counts[attack_type] = count
-        return counts
+        return sorted(counts.iteritems(), key=lambda (k, v): v, reverse=True)[:number_of_attack_types]
 
-    def top_attacking_country_counts(self, number_of_countries=10):
+    def count_events_top_attacking_countries(self, number_of_countries=10):
         pipeline = [
             {
                 '$project': {
@@ -228,7 +221,7 @@ class MongoDBFunctionsWrapper:
                     counts[country] = number_of_events
         return sorted(counts.iteritems(), key=lambda (k, v): v, reverse=True)[:number_of_countries]
 
-    def count_submissions_from_given_user(self, username):
+    def count_submissions_from_user(self, username):
         counts = {
             'ips': self.ips.count({'source.instances.analyst': username}),
             'events': self.events.count({'source.instances.analyst': username})
@@ -281,20 +274,7 @@ class MongoDBFunctionsWrapper:
             }
             return counts
 
-    def count_submissions_per_user(self):
-        # Count the number of IPs and Events submitted by each user.
-        counts = {}
-        for user in self.users.find():
-            username = user['username']
-            query = {'source.instances.analyst': username}
-            counts_per_user = {
-                'ips': self.ips.count(query),
-                'events': self.events.count(query)
-            }
-            counts[username] = counts_per_user
-        return counts
-
-    def count_recent_submissions_from_user(self, username):
+    def count_recent_submissions_from_user_multiple_reporters(self, username):
         """
         Count the number of submissions from the given user within the last 7 days.
         :param username:
@@ -302,7 +282,7 @@ class MongoDBFunctionsWrapper:
         """
         end_period = datetime.now()
         # TODO: Should I round up or down for this date? Or at all?
-        start_period = end_period - relativedelta(days=120)
+        start_period = end_period - timedelta(days=120)
         pipeline = [
             {'$match': {'created': {'$gte': start_period}}},
             {'$unwind': '$source'},
@@ -318,6 +298,13 @@ class MongoDBFunctionsWrapper:
                 }
             },
             {'$unwind': '$ip'},
+            {'$unwind': '$ip.objects'},
+            {
+                '$match': {
+                    'ip.objects.type': 'Number of Reporters',
+                    'ip.objects.value': {'$gt': "1"}
+                }
+            },
             {
                 '$group': {
                     '_id': '$ip.ip',
@@ -349,6 +336,8 @@ class MongoDBFunctionsWrapper:
             'events': 0
         }
         return counts
+
+    ### Functions for obtaining statistics that don't get sent to users.
 
     def top_attacking_asn_counts(self, number_of_attack_types=10):
         pipeline = [

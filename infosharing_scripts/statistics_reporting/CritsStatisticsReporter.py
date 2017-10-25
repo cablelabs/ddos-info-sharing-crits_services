@@ -25,49 +25,39 @@ class CritsStatisticsReporter:
         self.global_statistics_path = self.reports_path + 'global_statistics.csv'
         self.user_statistics_path_prefix = self.reports_path + 'user_statistics_'
         #self.write_global_statistics()
-        #self.write_user_statistics()
+        self.write_user_statistics()
         #self.email_statistics()
-        # NOTE: Stats below are optional, and not sent to users.
-        self.write_top_attacking_asns()
-        #self.write_submissions_per_period()
-        #self.write_submissions_per_owning_source()
 
     def write_global_statistics(self):
         csv_file = open(self.global_statistics_path, 'wb')
         stats_writer = csv.writer(csv_file)
-        #stats_writer.writerow(['Statistic', 'Value'])
 
+        stats_writer.writerow(['Statistic', 'Value'])
         total_ips = self.wrapper.count_ips()
         stats_writer.writerow(['Total # of IPs', total_ips])
         print "Wrote total number of IPs."
         total_events = self.wrapper.count_events()
         stats_writer.writerow(['Total # of Events', total_events])
         print "Wrote total number of Events."
-        number_ips_reported_by_many_sources = self.wrapper.count_ips_multiple_sources()
-        stats_writer.writerow(['# of IPs reported by multiple data providers', number_ips_reported_by_many_sources])
+        total_ips_multiple_reporters = self.wrapper.count_ips_multiple_reporters()
+        stats_writer.writerow(['# of IPs reported by multiple data providers', total_ips_multiple_reporters])
         print "Wrote number of IPs reported by more than one data provider."
-        number_events_multiple_sources = self.wrapper.count_events_multiple_sources()
-        stats_writer.writerow(['# of Events for IPs reported by multiple data providers', number_events_multiple_sources])
+        total_events_multiple_reporters = self.wrapper.count_events_multiple_reporters()
+        stats_writer.writerow(['# of Events for IPs reported by multiple data providers', total_events_multiple_reporters])
         print "Wrote number of Events for IPs reported by more than one data provider."
 
-        # TODO: Make query for attack types with multiple reporters faster.
-        # stats_writer.writerow([])
-        # stats_writer.writerow(['Top Attack Types'])
-        # stats_writer.writerow(['Attack Type', 'Number of Events'])
-        # start = datetime.now()
-        # top_attack_type_counts = self.wrapper.count_events_top_attack_types_multiple_sources_v3(10)
-        # duration = datetime.now() - start
-        # print "Query Time:", duration
-        # #sorted(top_attack_type_counts.iteritems(), key=lambda (k, v): v, reverse=True)
-        # #for attack_type, count in top_attack_type_counts:
-        # for attack_type, count in sorted(top_attack_type_counts.iteritems(), key=lambda (k, v): v, reverse=True):
-        #     stats_writer.writerow([attack_type, count])
-        # print "Wrote top 10 attack types."
+        stats_writer.writerow([])
+        stats_writer.writerow(['Top Attack Types'])
+        stats_writer.writerow(['Attack Type', 'Number of Events'])
+        #top_attack_type_counts = self.wrapper.count_events_top_attack_types_multiple_reporters()
+        #for attack_type, count in top_attack_type_counts:
+        #    stats_writer.writerow([attack_type, count])
+        print "Wrote top 10 attack types."
 
         stats_writer.writerow([])
         stats_writer.writerow(['Top Attacking Countries'])
         stats_writer.writerow(['Country', 'Number of Events'])
-        top_attacking_country_counts = self.wrapper.count_events_top_attacking_countries_multiple_reporters(10)
+        top_attacking_country_counts = self.wrapper.count_events_top_attacking_countries_multiple_reporters()
         for country, count in top_attacking_country_counts:
             stats_writer.writerow([country, count])
         print "Wrote top 10 attacking countries."
@@ -79,12 +69,11 @@ class CritsStatisticsReporter:
             user_statistics_path = self.user_statistics_path_prefix + username + '.csv'
             csv_file = open(user_statistics_path, 'wb')
             stats_writer = csv.writer(csv_file)
-            # TODO: consider only submissions they did in the last week or last 7 days
-            submissions_counts = self.wrapper.count_recent_submissions_from_user(username)
+            submissions_counts = self.wrapper.count_recent_submissions_from_user_multiple_reporters(username)
             stats_writer.writerow(['IPs submitted', submissions_counts['ips']])
             stats_writer.writerow(['Events submitted', submissions_counts['events']])
             csv_file.close()
-            print 'Wrote number of submissions per user.'
+            print 'Wrote number of submissions for user', username, '.'
 
     def email_statistics(self):
         for user in self.wrapper.find_users():
@@ -120,6 +109,8 @@ class CritsStatisticsReporter:
             except Exception as e:
                 print e
             server.close()
+
+    ### Functions for writing statistics that don't get sent to users.
 
     def write_top_attacking_asns(self):
         # Write additional statistics that are not to be emailed to participants.
