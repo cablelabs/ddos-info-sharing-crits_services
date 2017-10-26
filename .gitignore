@@ -3,3 +3,4 @@
 *.swo
 !passivetotal_service
 .idea
+/infosharing_scripts/statistics_reporting/credentials.json
