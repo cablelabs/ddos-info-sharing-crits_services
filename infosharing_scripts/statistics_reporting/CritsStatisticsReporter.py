@@ -24,7 +24,7 @@ class CritsStatisticsReporter:
         os.mkdir(self.reports_path)
         self.global_statistics_path = self.reports_path + 'global_statistics.csv'
         self.user_statistics_path_prefix = self.reports_path + 'user_statistics_'
-        #self.write_global_statistics()
+        self.write_global_statistics()
         self.write_user_statistics()
         #self.email_statistics()
 
@@ -69,11 +69,11 @@ class CritsStatisticsReporter:
             user_statistics_path = self.user_statistics_path_prefix + username + '.csv'
             csv_file = open(user_statistics_path, 'wb')
             stats_writer = csv.writer(csv_file)
-            submissions_counts = self.wrapper.count_recent_submissions_from_user_multiple_reporters(username)
+            submissions_counts = self.wrapper.count_submissions_from_user_within_day(username)
             stats_writer.writerow(['IPs submitted', submissions_counts['ips']])
             stats_writer.writerow(['Events submitted', submissions_counts['events']])
             csv_file.close()
-            print 'Wrote number of submissions for user', username, '.'
+            print "Wrote number of submissions for user '", username, "'."
 
     def email_statistics(self):
         for user in self.wrapper.find_users():
@@ -82,7 +82,7 @@ class CritsStatisticsReporter:
             # Note: '40.97.138.66' is the IP address for 'smtp-mail.outlook.com'.
             server = smtplib.SMTP(host='40.97.138.66', port=587)
             server.starttls()
-            credentials_file = open('credentials.json', 'r')
+            credentials_file = open('reporting_config.json', 'r')
             credentials = json.load(credentials_file)
             from_email = credentials['address']
             password = credentials['password']
@@ -110,7 +110,7 @@ class CritsStatisticsReporter:
                 print e
             server.close()
 
-    ### Functions for writing statistics that don't get sent to users.
+    ### Functions for Private Statistics ###
 
     def write_top_attacking_asns(self):
         # Write additional statistics that are not to be emailed to participants.

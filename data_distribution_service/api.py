@@ -1,6 +1,7 @@
 from datetime import datetime
 import pytz
 from tzlocal import get_localzone
+from django.utils.dateparse import parse_datetime
 from tastypie import authorization
 from tastypie.authentication import MultiAuthentication
 
@@ -140,7 +141,7 @@ class DataDistributionResource(CRITsAPIResource):
         self.aggregation_pipeline.extend(middle_stages)
         if modified_since:
             try:
-                modified_since_datetime = datetime.strptime(modified_since, "%Y-%m-%dT%H:%M:%S.%fZ")
+                modified_since_datetime = parse_datetime(modified_since)
             except ValueError:
                 try:
                     modified_since_datetime = datetime.strptime(modified_since, "%Y-%m-%d")

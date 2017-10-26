@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+from dateutils import relativedelta
 from pymongo import MongoClient
 
 
@@ -16,7 +17,7 @@ class MongoDBFunctionsWrapper:
     def find_users(self):
         return self.users.find()
 
-    ### Count Functions ###
+    ### Count Functions for Global Statistics ###
 
     def count_ips(self):
         return self.ips.count()
@@ -221,67 +222,17 @@ class MongoDBFunctionsWrapper:
                     counts[country] = number_of_events
         return sorted(counts.iteritems(), key=lambda (k, v): v, reverse=True)[:number_of_countries]
 
-    def count_submissions_from_user(self, username):
-        counts = {
-            'ips': self.ips.count({'source.instances.analyst': username}),
-            'events': self.events.count({'source.instances.analyst': username})
-        }
-        return counts
+    ### Count Function for User Statistics ###
 
-    def count_submissions_from_user_multiple_reporters(self, username):
+    def count_submissions_from_user_within_day(self, username):
         """
-        Count the number of submissions from the given user that relate to IP addresses that have been reported by
-        multiple sources.
-        :param username: The name of the user whose submissions we're counting.
+        Count the number of submissions from the given user within the last day (24 hrs).
+        :param username: The name of the user whose submissions we are counting.
         :type username: string
-        :return: dict, where each key is a string and each value is an int
-        """
-        pipeline = [
-            {'$unwind': '$objects'},
-            {
-                '$match': {
-                    'objects.type': 'Number of Reporters',
-                    'objects.value': {'$gt': "1"}
-                }
-            },
-            {'$unwind': '$source'},
-            {'$unwind': '$source.instances'},
-            {'$match': {'source.instances.analyst': username}},
-            {
-                '$group': {
-                    '_id': '$_id',
-                    'numberOfEvents': {'$sum': 1}
-                }
-            },
-            {
-                '$group': {
-                    '_id': None,
-                    'numberOfIPs': {'$sum': 1},
-                    'numberOfEvents': {'$sum': 'numberOfEvents'}
-                }
-            }
-        ]
-        collation = {
-            'locale': 'en_US_POSIX',
-            'numericOrdering': True
-        }
-        aggregate_counts = self.ips.aggregate(pipeline, collation=collation, allowDiskUse=True)
-        for count in aggregate_counts:
-            # Return first result, because there should only be one result.
-            counts = {
-                'ips': count['numberOfIPs'],
-                'events': count['numberOfEvents']
-            }
-            return counts
-
-    def count_recent_submissions_from_user_multiple_reporters(self, username):
-        """
-        Count the number of submissions from the given user within the last 7 days.
-        :param username:
-        :return:
+        :return: dict, with keys 'ips' and 'events' whose values are ints
         """
         end_period = datetime.now()
-        # TODO: Should I round up or down for this date? Or at all?
+        # TODO: Should I round up or down for the datetime I use to filter? Should I round at all?
         start_period = end_period - timedelta(days=120)
         pipeline = [
             {'$match': {'created': {'$gte': start_period}}},
@@ -298,13 +249,6 @@ class MongoDBFunctionsWrapper:
                 }
             },
             {'$unwind': '$ip'},
-            {'$unwind': '$ip.objects'},
-            {
-                '$match': {
-                    'ip.objects.type': 'Number of Reporters',
-                    'ip.objects.value': {'$gt': "1"}
-                }
-            },
             {
                 '$group': {
                     '_id': '$ip.ip',
@@ -325,7 +269,7 @@ class MongoDBFunctionsWrapper:
         }
         aggregate_counts = self.events.aggregate(pipeline=pipeline, collation=collation, allowDiskUse=True)
         for count in aggregate_counts:
-            # Return first result, because there should only be one result.
+            # Return values from first result, because there should only be one result.
             counts = {
                 'ips': count['numberOfIPs'],
                 'events': count['numberOfEvents']
@@ -337,7 +281,7 @@ class MongoDBFunctionsWrapper:
         }
         return counts
 
-    ### Functions for obtaining statistics that don't get sent to users.
+    ### Functions for Private Statistics ###
 
     def top_attacking_asn_counts(self, number_of_attack_types=10):
         pipeline = [
