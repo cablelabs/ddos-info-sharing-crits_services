@@ -1,0 +1,7 @@
+Message for User '{username}':
+
+Below is a summary of the data submitted by your account in the last 24 hours.
+
+Time statistics were collected: {timestamp}
+Number of unique IPs reported: {number_of_ips}
+Number of Events reported: {number_of_events}

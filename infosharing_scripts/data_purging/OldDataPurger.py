@@ -75,21 +75,31 @@ class OldDataPurger:
             if modified_datetime >= one_month_ago:
                 print "Error"
 
-    def delete_ips(self, number_to_remove=10):
-        ip_object = self.ips.find_one(skip=(number_to_remove-1), sort=[('modified', 1)])
-        modified_datetime = ip_object['modified']
-        query = {'modified': {'$lte': modified_datetime}}
-        # TODO: delete events corresponding to the IPs we're going to delete.
-        ip_objects = self.ips.find(filter=query)
-        for ip_object in ip_objects:
-            for relationship in ip_object['relationships']:
-                if relationship['type'] == 'Event':
-                    event_id = relationship['value']
-                    #delete_result = self.events.delete_one(id=event_id)
-        #number_deleted = self.ips.delete_many(filter=delete_query)
-        #print number_deleted
-
+    def delete_ips(self):
+        """
+        Delete half of the IPs in the database, and their corresponding events.
+        :return:
+        """
+        number_of_ips = self.ips.count()
+        number_ips_deleted = 0
+        number_events_deleted = 0
+        for number_to_skip in range(0, number_of_ips, 3000):
+            ip_objects = self.ips.find(skip=number_to_skip, sort=[('modified', 1)])
+            is_delete_ip = False
+            for ip_object in ip_objects:
+                if is_delete_ip:
+                    ip_id = ip_object['_id']
+                    self.ips.delete_one({'_id': ip_id})
+                    number_ips_deleted += 1
+                    for relationship in ip_object['relationships']:
+                        if relationship['type'] == 'Event':
+                            event_id = relationship['value']
+                            self.events.delete_one({'_id': event_id})
+                            number_events_deleted += 1
+                is_delete_ip = not is_delete_ip
+        print "IPs Deleted:", number_ips_deleted
+        print "Events Deleted:", number_events_deleted
 
 purger = OldDataPurger()
 #purger.run()
-purger.delete_ips(300000)
+purger.delete_ips()
