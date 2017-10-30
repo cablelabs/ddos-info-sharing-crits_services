@@ -1,6 +1,20 @@
 import csv
 from datetime import datetime, timedelta
+from multiprocessing import Pool
 from pymongo import MongoClient
+
+
+def remove_ith_ip_object(i):
+    client = MongoClient()
+    ips = client.crits.ips
+    events = client.crits.events
+    ip_object = ips.find_one(skip=i, sort=[('modified', 1)])
+    ip_id = ip_object['_id']
+    ips.delete_one({'_id': ip_id})
+    for relationship in ip_object['relationships']:
+        if relationship['type'] == 'Event':
+            event_id = relationship['value']
+            events.delete_one({'_id': event_id})
 
 
 class OldDataPurger:
@@ -81,24 +95,12 @@ class OldDataPurger:
         :return:
         """
         number_of_ips = self.ips.count()
-        number_ips_deleted = 0
-        number_events_deleted = 0
-        for number_to_skip in range(0, number_of_ips, 3000):
-            ip_objects = self.ips.find(skip=number_to_skip, sort=[('modified', 1)])
-            is_delete_ip = False
-            for ip_object in ip_objects:
-                if is_delete_ip:
-                    ip_id = ip_object['_id']
-                    self.ips.delete_one({'_id': ip_id})
-                    number_ips_deleted += 1
-                    for relationship in ip_object['relationships']:
-                        if relationship['type'] == 'Event':
-                            event_id = relationship['value']
-                            self.events.delete_one({'_id': event_id})
-                            number_events_deleted += 1
-                is_delete_ip = not is_delete_ip
-        print "IPs Deleted:", number_ips_deleted
-        print "Events Deleted:", number_events_deleted
+        number_of_events = self.events.count()
+        pool = Pool(10)
+        pool.map(remove_ith_ip_object, range(0, number_of_ips, 2))
+        print "IPs Deleted:", number_of_ips - self.ips.count()
+        print "Events Deleted:", number_of_events - self.events.count()
+
 
 purger = OldDataPurger()
 #purger.run()
