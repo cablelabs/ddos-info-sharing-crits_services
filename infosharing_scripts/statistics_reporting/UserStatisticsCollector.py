@@ -9,13 +9,21 @@ class UserStatisticsCollector(StatisticsCollector):
         Count the number of submissions from the given user within the last day (24 hrs).
         :param username: The name of the user whose submissions we are counting.
         :type username: string
-        :return: dict, with keys 'ips' and 'events' whose values are ints
+        :return: dict, with keys 'ips' and 'events' whose values are ints, and key 'time_collected' whose value is a datetime
         """
         end_period = datetime.now()
         # TODO: Should I round up or down for the datetime I use to filter? Should I round at all?
+        # TODO: Change day period back to 30 days when done testing
         start_period = end_period - timedelta(days=120)
         pipeline = [
-            {'$match': {'created': {'$gte': start_period}}},
+            {
+                '$match': {
+                    'created': {
+                        '$gte': start_period,
+                        '$lte': end_period
+                    }
+                }
+            },
             {'$unwind': '$source'},
             {'$unwind': '$source.instances'},
             {'$match': {'source.instances.analyst': username}},
@@ -52,11 +60,13 @@ class UserStatisticsCollector(StatisticsCollector):
             # Return values from first result, because there should only be one result.
             counts = {
                 'ips': count['numberOfIPs'],
-                'events': count['numberOfEvents']
+                'events': count['numberOfEvents'],
+                'time_collected': end_period
             }
             return counts
         counts = {
             'ips': 0,
-            'events': 0
+            'events': 0,
+            'time_collected': end_period
         }
         return counts

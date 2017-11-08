@@ -4,6 +4,8 @@ import json, smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import formatdate
+#from crits.core.user_tools import get_user_email_notification
+
 from UserStatisticsCollector import UserStatisticsCollector
 
 
@@ -29,9 +31,9 @@ class UserStatisticsReporter:
         try:
             for user in self.collector.find_users():
                 username = user['username']
-                time_collected_str = datetime.now().strftime(full_time_format)
                 submissions_counts = self.collector.count_submissions_from_user_within_day(username)
-                stats_writer.writerow([username, time_collected_str, submissions_counts['ips'], submissions_counts['events']])
+                time_collected = submissions_counts['time_collected'].strftime(full_time_format)
+                stats_writer.writerow([username, time_collected, submissions_counts['ips'], submissions_counts['events']])
                 print "Wrote number of submissions for user '" + username + "'."
         finally:
             csv_file.close()
@@ -50,8 +52,8 @@ class UserStatisticsReporter:
         stats_reader = csv.reader(user_stats_file)
         for row in stats_reader:
             username = row[0]
-            if username == 'Username':
-                # Ignore first line of CSV file.
+            if username == 'Username':# or not get_user_email_notification(username):
+                # Ignore first line of CSV file, and send email only if user has email notifications enabled.
                 continue
             time_collected = row[1]
             number_of_ips = row[2]
@@ -60,6 +62,7 @@ class UserStatisticsReporter:
             message = MIMEText(message_file.read())
             message_file.close()
             message['From'] = from_email
+            # TODO: When done testing code, set recepient to the user whose stats we're reporting.
             # user = self.collector.find_one_user(username)
             # message['To'] = user['email']
             message['To'] = from_email
@@ -78,5 +81,5 @@ class UserStatisticsReporter:
                 print e
             server.close()
 
-reporter = UserStatisticsReporter()
-reporter.run()
+#reporter = UserStatisticsReporter()
+#reporter.run()

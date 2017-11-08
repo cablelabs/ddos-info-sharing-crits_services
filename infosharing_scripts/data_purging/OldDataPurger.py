@@ -4,17 +4,27 @@ from multiprocessing import Pool
 from pymongo import MongoClient
 
 
-def remove_ith_ip_object(i):
+def retrieve_ith_ip_address(i):
+    client = MongoClient()
+    ips = client.crits.ips
+    ip_object = ips.find_one(skip=i, sort=[('modified', 1)])
+    return ip_object['ip']
+
+
+def remove_ip_object(ip_address):
     client = MongoClient()
     ips = client.crits.ips
     events = client.crits.events
-    ip_object = ips.find_one(skip=i, sort=[('modified', 1)])
-    ip_id = ip_object['_id']
-    ips.delete_one({'_id': ip_id})
-    for relationship in ip_object['relationships']:
-        if relationship['type'] == 'Event':
-            event_id = relationship['value']
-            events.delete_one({'_id': event_id})
+    ip_object = ips.find_one(filter={'ip': ip_address})
+    try:
+        ip_id = ip_object['_id']
+        ips.delete_one({'_id': ip_id})
+        for relationship in ip_object['relationships']:
+            if relationship['type'] == 'Event':
+                event_id = relationship['value']
+                events.delete_one({'_id': event_id})
+    except TypeError as e:
+        print e.message
 
 
 class OldDataPurger:
@@ -97,11 +107,23 @@ class OldDataPurger:
         number_of_ips = self.ips.count()
         number_of_events = self.events.count()
         pool = Pool(10)
-        pool.map(remove_ith_ip_object, range(0, number_of_ips, 2))
+        ip_addresses = pool.map(retrieve_ith_ip_address, range(0, number_of_ips, 2))
+        pool.map(remove_ip_object, ip_addresses)
+        pool.close()
         print "IPs Deleted:", number_of_ips - self.ips.count()
         print "Events Deleted:", number_of_events - self.events.count()
 
+    def remove_events_with_no_ip(self):
+        event_objects = self.events.find()
+        for event_object in event_objects:
+            for relationship in event_object['relationships']:
+                ip_id = relationship['value']
+                ip_object = self.ips.find_one(filter={'_id': ip_id})
+                if ip_object is None:
+                    event_id = event_object['_id']
+                    self.events.delete_one(filter={'_id': event_id})
 
 purger = OldDataPurger()
 #purger.run()
 purger.delete_ips()
+#purger.remove_events_with_no_ip()

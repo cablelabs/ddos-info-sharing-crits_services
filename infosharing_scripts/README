@@ -1,5 +1,15 @@
 This directory simply contains useful scripts for the DDoS Information Sharing project.
 
+Each sub-directory has different categories of scripts:
+
+1. data_purging: Scripts for removing unwanted data from the database.
+2. data_updating: Scripts that update one or more fields in documents in the database.
+3. examples: Simple scripts for new users to see how each service works in action.
+4. speed_tests: Various scripts for testing different ways of writing complex functions, seeing which versions are faster.
+5. statistics_reporting: Scripts that aggregate information from the database and email it to users. Most of these will
+be used in cron jobs that run on a daily or weekly basis.
+
+
 Note: When using the scripts in the "statistics_reporting" directory, make sure to do the following:
 
 1. Fill in the credentials in the file 'credentials.json' with the information for the email that will send reports.
