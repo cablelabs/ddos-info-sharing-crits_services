@@ -1,26 +1,25 @@
-from datetime import datetime, timedelta
 from StatisticsCollector import StatisticsCollector
 
 
 class UserStatisticsCollector(StatisticsCollector):
 
-    def count_submissions_from_user_within_day(self, username):
+    def count_submissions_from_user_within_duration(self, username, duration_start, duration_end):
         """
-        Count the number of submissions from the given user within the last day (24 hrs).
+        Count the number of submissions from the given user within the duration start and end period, inclusive.
         :param username: The name of the user whose submissions we are counting.
         :type username: string
+        :param duration_start: The date such that all submissions considered were submitted no earlier than this date.
+        :type duration_start: a Pendulum object
+        :param duration_end: The date such that all submissions considered were submitted no later than this date.
+        :type duration_end: a Pendulum object
         :return: dict, with keys 'ips' and 'events' whose values are ints, and key 'time_collected' whose value is a datetime
         """
-        end_period = datetime.now()
-        # TODO: Should I round up or down for the datetime I use to filter? Should I round at all?
-        # TODO: Change day period back to 30 days when done testing
-        start_period = end_period - timedelta(days=120)
         pipeline = [
             {
                 '$match': {
                     'created': {
-                        '$gte': start_period,
-                        '$lte': end_period
+                        '$gte': duration_start,
+                        '$lte': duration_end
                     }
                 }
             },
@@ -56,17 +55,12 @@ class UserStatisticsCollector(StatisticsCollector):
             'numericOrdering': True
         }
         aggregate_counts = self.events.aggregate(pipeline=pipeline, collation=collation, allowDiskUse=True)
-        for count in aggregate_counts:
-            # Return values from first result, because there should only be one result.
-            counts = {
-                'ips': count['numberOfIPs'],
-                'events': count['numberOfEvents'],
-                'time_collected': end_period
-            }
-            return counts
-        counts = {
+        output_counts = {
             'ips': 0,
-            'events': 0,
-            'time_collected': end_period
+            'events': 0
         }
-        return counts
+        # Note: There should be at most one result, because a $group operation on a null ID aggregates all documents.
+        for aggregate_count in aggregate_counts:
+            output_counts['ips'] = aggregate_count['numberOfIPs']
+            output_counts['events'] = aggregate_count['numberOfEvents']
+        return output_counts
