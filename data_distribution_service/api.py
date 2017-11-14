@@ -292,14 +292,14 @@ class DataDistributionResource(CRITsAPIResource):
 
     # TODO: convert input time to UTC, then to local
 
-    @staticmethod
-    def input_time_to_local_time(input_time):
-        # input_time is a datetime that can have any timezone.
-        # I can't just convert to local time directly, because then it's UTC will still be the same.
-        utc_time = input_time.astimezone(pytz.utc)
-        local_timezone = get_localzone()
-        local_time
-        return ''
+    # @staticmethod
+    # def input_time_to_local_time(input_time):
+    #     # input_time is a datetime that can have any timezone.
+    #     # I can't just convert to local time directly, because then it's UTC will still be the same.
+    #     utc_time = input_time.astimezone(pytz.utc)
+    #     local_timezone = get_localzone()
+    #     local_time
+    #     return ''
 
     @staticmethod
     def local_time_string_to_utc_string(local_time):

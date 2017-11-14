@@ -11,8 +11,9 @@ class UserStatisticsTester:
 
     def test_collector(self):
         today = pendulum.today('UTC')
-        yesterday_start = today.subtract(days=1)
-        yesterday_end = today.subtract(microseconds=1)
+        # TODO: Remove 'hours' parameters once I fix timestamp discrepancies in CRITs.
+        yesterday_start = today.subtract(days=1, hours=7)
+        yesterday_end = today.subtract(hours=7, microseconds=1)
         for user in self.collector.find_users():
             username = user['username']
             submissions_counts = self.collector.count_submissions_from_user_within_duration(username, yesterday_start, yesterday_end)

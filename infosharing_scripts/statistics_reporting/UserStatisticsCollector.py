@@ -5,7 +5,7 @@ class UserStatisticsCollector(StatisticsCollector):
 
     def count_submissions_from_user_within_duration(self, username, duration_start, duration_end):
         """
-        Count the number of submissions from the given user within the duration start and end period, inclusive.
+        Count the number of submissions from the given user within the duration start and end period, both inclusive.
         :param username: The name of the user whose submissions we are counting.
         :type username: string
         :param duration_start: The date such that all submissions considered were submitted no earlier than this date.

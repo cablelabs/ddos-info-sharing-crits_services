@@ -1,0 +1,1 @@
+Attached is a report of the total number of submissions from all users for the given day.
