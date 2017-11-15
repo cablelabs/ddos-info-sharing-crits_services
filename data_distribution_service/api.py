@@ -25,7 +25,7 @@ class DataDistributionResource(CRITsAPIResource):
         self.aggregation_pipeline = []
 
     class Meta:
-        allowed_methods = ('get')
+        allowed_methods = ('get',)
         resource_name = "data_distribution_resource"
         collection_name = "outputData"
         excludes = ["id", "resource_uri", "unsupported_attrs"]
@@ -118,6 +118,13 @@ class DataDistributionResource(CRITsAPIResource):
         ]
         modified_since = self.request.GET.get('modifiedSince', '')
         if modified_since:
+            try:
+                modified_since_datetime = parse_datetime(modified_since)
+            except ValueError:
+                try:
+                    modified_since_datetime = datetime.strptime(modified_since, "%Y-%m-%d")
+                except ValueError:
+                    raise ValueError("'modifiedSince' time not a properly formatted ISO string.")
             match_ip_received_stage = {'$match': {IPOutputFields.LAST_TIME_RECEIVED: {'$gte': modified_since}}}
             self.aggregation_pipeline.append(match_ip_received_stage)
         unwind_relationships_stage = {'$unwind': '$relationships'}
@@ -140,13 +147,7 @@ class DataDistributionResource(CRITsAPIResource):
         ]
         self.aggregation_pipeline.extend(middle_stages)
         if modified_since:
-            try:
-                modified_since_datetime = parse_datetime(modified_since)
-            except ValueError:
-                try:
-                    modified_since_datetime = datetime.strptime(modified_since, "%Y-%m-%d")
-                except ValueError:
-                    raise ValueError("'modifiedSince' time not a properly formatted ISO string.")
+
             match_event_created_stage = {'$match': {'event.created': {'$gte': modified_since_datetime}}}
             self.aggregation_pipeline.append(match_event_created_stage)
         attack_type_sub_object_type = EventOutputFields.get_object_type_from_field_name(EventOutputFields.ATTACK_TYPES)
@@ -249,7 +250,7 @@ class DataDistributionResource(CRITsAPIResource):
                 fields_to_remove.append(field_name)
         for field in fields_to_remove:
             del bundle.data[field]
-        # Convert 'lastTimeReceived' to UTC.
+        # Convert 'lastTimeReceived' to UTC because it actually gets saved in local time.
         last_time_received = bundle.data[IPOutputFields.LAST_TIME_RECEIVED]
         bundle.data[IPOutputFields.LAST_TIME_RECEIVED] = self.local_time_string_to_utc_string(last_time_received)
         # Convert appropriate fields of IP object to integers.
@@ -276,7 +277,7 @@ class DataDistributionResource(CRITsAPIResource):
                         fields_to_remove.append(field_name)
                 for field in fields_to_remove:
                     del bundle.data[IPOutputFields.EVENTS][i][field]
-                # Convert 'timeRecorded' to UTC.
+                # Convert 'timeRecorded' to UTC because it actually gets saved in local time.
                 time_recorded = bundle.data[IPOutputFields.EVENTS][i][EventOutputFields.TIME_RECORDED]
                 bundle.data[IPOutputFields.EVENTS][i][EventOutputFields.TIME_RECORDED] = self.local_time_to_utc_string(time_recorded)
                 # Convert appropriate fields of event to integers.
@@ -289,18 +290,29 @@ class DataDistributionResource(CRITsAPIResource):
                             pass
         return bundle
 
+    # TODO: convert input time to UTC, then to local
+
+    # @staticmethod
+    # def input_time_to_local_time(input_time):
+    #     # input_time is a datetime that can have any timezone.
+    #     # I can't just convert to local time directly, because then it's UTC will still be the same.
+    #     utc_time = input_time.astimezone(pytz.utc)
+    #     local_timezone = get_localzone()
+    #     local_time
+    #     return ''
+
     @staticmethod
     def local_time_string_to_utc_string(local_time):
-        # local_time as string
-        local_timezone = get_localzone()
+        # local_time is a string
         local_datetime = datetime.strptime(local_time, "%Y-%m-%dT%H:%M:%S.%fZ")
+        local_timezone = get_localzone()
         localized_time = local_timezone.localize(local_datetime)
         utc_time = localized_time.astimezone(pytz.utc)
         return utc_time.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
     @staticmethod
     def local_time_to_utc_string(local_datetime):
-        # local_time as datetime
+        # local_datetime is a datetime
         local_timezone = get_localzone()
         localized_time = local_timezone.localize(local_datetime)
         utc_time = localized_time.astimezone(pytz.utc)

@@ -1,6 +1,30 @@
 import csv
-from datetime import datetime, timedelta
+import pendulum
+from multiprocessing import Pool
 from pymongo import MongoClient
+
+
+def retrieve_ith_ip_address(i):
+    client = MongoClient()
+    ips = client.crits.ips
+    ip_object = ips.find_one(skip=i, sort=[('modified', 1)])
+    return ip_object['ip']
+
+
+def remove_ip_object(ip_address):
+    client = MongoClient()
+    ips = client.crits.ips
+    events = client.crits.events
+    ip_object = ips.find_one(filter={'ip': ip_address})
+    try:
+        ip_id = ip_object['_id']
+        ips.delete_one({'_id': ip_id})
+        for relationship in ip_object['relationships']:
+            if relationship['type'] == 'Event':
+                event_id = relationship['value']
+                events.delete_one({'_id': event_id})
+    except TypeError as e:
+        print e.message
 
 
 class OldDataPurger:
@@ -12,84 +36,39 @@ class OldDataPurger:
         self.source_access = client.crits.source_access
         self.users = client.crits.users
 
-    def run(self):
-        # Print number of old IPs.
-        time_now = datetime.now()
-        # TODO: use config file for number of days
-        one_month_ago = time_now - timedelta(days=30)
-        old_ips_query = {'modified': {'$lt': one_month_ago}}
-        count = self.ips.count(filter=old_ips_query)
-        print "Number of Old IPs:", count
+    def delete_old_ips(self, months=0, days=0):
+        # TODO: Later on, delete old entries based on 'Last Time Received', NOT the time it was modified.
+        # Aggregation query in future version: in IPs collection, unwind objects, filter on type "Last Time Received"...
+        number_of_ips_before = self.ips.count()
+        time_now = pendulum.now()
+        earliest_date = time_now.subtract(months=months, days=days)
+        query = {'modified': {'$lt': earliest_date}}
+        self.ips.delete_many(filter=query)
+        print "IPs Deleted:", number_of_ips_before - self.ips.count()
+        return
 
-        # Iterate through old IPs, save their data to a log file, and delete them.
-        full_time_format = '%Y-%m-%dT%H:%M:%S.%fZ'
-        time_now_str = time_now.strftime(full_time_format)
-        ip_deletion_log_filename = 'ip_deletion_log_'+time_now_str+'.csv'
-        ip_deletion_log_write_file = open(ip_deletion_log_filename, 'wb')
-        ip_deletion_log_writer = csv.writer(ip_deletion_log_write_file)
-        ip_deletion_log_writer.writerow(['IP', 'Modified', 'AS Number'])
-        old_ip_objects = self.ips.find(filter=old_ips_query)
-        #number_of_ips_deleted = 0
-        #number_of_ips_to_delete = 5000
-        for ip_object in old_ip_objects:
-            as_number = None
-            for obj in ip_object['objects']:
-                if obj['type'] == 'AS Number':
-                    as_number = obj['value']
-                    break
-            ip_row = [ip_object['ip'], ip_object['modified'], as_number]
-            ip_deletion_log_writer.writerow(ip_row)
-            #number_of_ips_deleted += 1
-            # For each of the deleted IPs, find the associated Events, and make sure none of these events
-            # were created within the last 30 days. If there is an Event within 30 days, we have a bug.
-            # And, assuming all Events were created outside of 30 days, delete those events.
-            relationships = ip_object['relationships']
-            for relationship in relationships:
-                event_id = relationship['value']
-                event_object = self.events.find_one({'_id': event_id})
-                event_created_datetime = event_object['created']
-                if event_created_datetime < one_month_ago:
-                    # TODO: after testing, delete event
-                    pass
-                else:
-                    print "DANGAR"
-                    break
-            #if number_of_ips_deleted >= number_of_ips_to_delete:
-            #    break
-            # TODO: after testing the code, delete entries
-        ip_deletion_log_write_file.close()
+    def delete_ips(self):
+        """
+        Delete IPs until there are about 10,000 in the database.
+        :return:
+        """
+        number_of_ips = self.ips.count()
+        pool = Pool(10)
+        increment = number_of_ips / 10000
+        ip_addresses = pool.map(retrieve_ith_ip_address, range(0, number_of_ips, increment))
+        #pool.map(remove_ip_object, ip_addresses)
+        pool.close()
+        self.ips.delete_many(filter={'ip': {'$nin': ip_addresses}})
+        print "IPs Deleted:", number_of_ips - self.ips.count()
 
-        # Iterate through logs and make sure modified date of each IP is beyond 30 days ago.
-        ip_deletion_log_read_file = open(ip_deletion_log_filename, 'rb')
-        ip_deletion_log_reader = csv.reader(ip_deletion_log_read_file)
-        first_row = True
-        for row in ip_deletion_log_reader:
-            if first_row:
-                first_row = False
-                continue
-            modified_date = row[1]
-            try:
-                modified_datetime = datetime.strptime(modified_date, '%Y-%m-%d %H:%M:%S.%f')
-            except ValueError:
-                modified_datetime = datetime.strptime(modified_date, '%Y-%m-%d %H:%M:%S')
-            if modified_datetime >= one_month_ago:
-                print "Error"
-
-    def delete_ips(self, number_to_remove=10):
-        ip_object = self.ips.find_one(skip=(number_to_remove-1), sort=[('modified', 1)])
-        modified_datetime = ip_object['modified']
-        query = {'modified': {'$lte': modified_datetime}}
-        # TODO: delete events corresponding to the IPs we're going to delete.
-        ip_objects = self.ips.find(filter=query)
-        for ip_object in ip_objects:
-            for relationship in ip_object['relationships']:
-                if relationship['type'] == 'Event':
-                    event_id = relationship['value']
-                    #delete_result = self.events.delete_one(id=event_id)
-        #number_deleted = self.ips.delete_many(filter=delete_query)
-        #print number_deleted
-
-
-purger = OldDataPurger()
-#purger.run()
-purger.delete_ips(300000)
+    def remove_events_with_no_ip(self):
+        event_objects = self.events.find()
+        number_of_events = self.events.count()
+        for event_object in event_objects:
+            for relationship in event_object['relationships']:
+                ip_id = relationship['value']
+                ip_object = self.ips.find_one(filter={'_id': ip_id})
+                if ip_object is None:
+                    event_id = event_object['_id']
+                    self.events.delete_one(filter={'_id': event_id})
+        print "Events Deleted:", number_of_events - self.events.count()

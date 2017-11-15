@@ -1,0 +1,3 @@
+Message for User '{username}':
+
+Attached to this email is a report of various statistics about the system. A new report is sent on a weekly basis.
