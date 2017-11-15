@@ -1,3 +1,5 @@
+import pytz
+from tzlocal import get_localzone
 import pendulum
 from UserStatisticsCollector import UserStatisticsCollector
 from UserStatisticsReporter import UserStatisticsReporter
@@ -11,9 +13,10 @@ class UserStatisticsTester:
 
     def test_collector(self):
         today = pendulum.today('UTC')
-        # TODO: Remove 'hours' parameters once I fix timestamp discrepancies in CRITs.
-        yesterday_start = today.subtract(days=1, hours=7)
-        yesterday_end = today.subtract(hours=7, microseconds=1)
+        # TODO: Remove conversion once I fix timestamp discrepancies in CRITs.
+        today = self.utc_to_local_time(today)
+        yesterday_start = today.subtract(days=1)
+        yesterday_end = today.subtract(microseconds=1)
         for user in self.collector.find_users():
             username = user['username']
             submissions_counts = self.collector.count_submissions_from_user_within_duration(username, yesterday_start, yesterday_end)
@@ -26,6 +29,17 @@ class UserStatisticsTester:
                 print "Number of IPs, method 2:", manual_ips_count
                 print "Number of Events, method 1:", submissions_counts['events']
                 print "Number of Events, method 2:", manual_events_count
+
+    @staticmethod
+    def utc_to_local_time(utc_datetime):
+        """
+        Return the local time equivalent to the input UTC datetime (but return result as if it's UTC).
+        :param utc_datetime: datetime object
+        :return: datetime object
+        """
+        local_timezone = get_localzone()
+        local_datetime = utc_datetime.astimezone(local_timezone)
+        return local_datetime.replace(tzinfo=pytz.utc)
 
     def count_submissions_from_user(self, username, duration_start, duration_end):
         query = {
