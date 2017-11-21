@@ -72,7 +72,7 @@ class UserStatisticsReporter:
                     'Events': submissions_counts['events']
                 }
                 stats_writer.writerow(next_row)
-                print "Wrote number of submissions for user '" + username + "'."
+                #print "Wrote number of submissions for user '" + username + "'."
 
     def email_statistics(self, report_filepath, report_date):
         server = smtplib.SMTP(host='smtp.office365.com', port=587)

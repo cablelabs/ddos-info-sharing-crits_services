@@ -28,7 +28,7 @@ def local_time_to_utc(local_datetime):
     utc_time = localized_time.astimezone(pytz.utc)
     return utc_time
 
-
+print "Script Start (UTC):", pendulum.now('UTC')
 in_progress_filter = {'status': 'In Progress'}
 client = MongoClient()
 ips = client.crits.ips
@@ -77,7 +77,7 @@ for event_object in event_objects:
         '$set': {
             'created': new_created_date,
             'modified': pendulum.now('UTC'),
-            'status': 'Analyzed'
+            'status': 'New'
         }
     }
     events.update_one(filter=query, update=update_operators)
