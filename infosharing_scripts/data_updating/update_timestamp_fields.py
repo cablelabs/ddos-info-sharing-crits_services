@@ -7,19 +7,14 @@ local timezone (MST). The values will be converted to UTC. These are the fields 
 IP: created, modified, Last Time Received
 Event: created, modified
 
-When an object is updated, the 'modified' time should be set to a legitimate UTC time.
+When new values are saved to an object, the 'modified' time of that object will be set to a legitimate UTC time
+(specifically the time when the values were saved).
 """
-import os
-from datetime import datetime, timedelta
-from multiprocessing import Pool
+from datetime import datetime
 import pytz
 from tzlocal import get_localzone
-
-os.environ['DJANGO_SETTINGS_MODULE'] = 'crits.settings'
-
-from crits.core.user_tools import get_user_organization
-from crits.events.event import Event
-from crits.ips.ip import IP
+from pymongo import MongoClient
+import pendulum
 
 
 def local_time_to_utc(local_datetime):
@@ -31,48 +26,62 @@ def local_time_to_utc(local_datetime):
     local_timezone = get_localzone()
     localized_time = local_timezone.localize(local_datetime)
     utc_time = localized_time.astimezone(pytz.utc)
-    return utc_time.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+    return utc_time
 
 
-def update_ip_object(ip_object):
-    analyst = 'analysis_autofill'
-    # Hard-coded increment of 7 hours to each timestamp, because the issue occurred on a machine running on MST (UTC-7).
-    #ip_object.created += timedelta(hours=7)
-    ip_object.created = local_time_to_utc(ip_object.created)
-    # To prevent skipping objects while iterating through sub-objects, store list of objects to remove later.
-    previous_object_values = []
-    for o in ip_object.obj:
-        if o.object_type == 'Last Time Received':
-            previous_object_values.append(o.value)
-    last_time_seen = ''
-    for previous_value in previous_object_values:
-        last_time_seen = previous_value
-        ip_object.remove_object('Last Time Received', previous_value)
-    try:
-        last_time_seen_datetime = datetime.strptime(last_time_seen, "%Y-%m-%dT%H:%M:%S.%fZ")
-        #last_time_seen_datetime += timedelta(hours=7)
-        last_time_seen_datetime = local_time_to_utc(last_time_seen_datetime)
-        last_time_seen = last_time_seen_datetime.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-        ip_object.add_object('Last Time Received', last_time_seen, get_user_organization(analyst), '', '', analyst)
-    except ValueError:
-        pass
-    ip_object.status = "Analyzed"
-    ip_object.save(username=analyst)
-    return
+in_progress_filter = {'status': 'In Progress'}
+client = MongoClient()
+ips = client.crits.ips
+ip_objects = ips.find(filter=in_progress_filter)
+number_of_ips = 0
+
+start_time = datetime.now()
+for ip_object in ip_objects:
+    new_created_date = local_time_to_utc(ip_object['created'])
+    new_last_time_seen_object = None
+    for obj in ip_object['objects']:
+        if obj['type'] == 'Last Time Received':
+            last_time_seen = obj['value']
+            last_time_seen_datetime = datetime.strptime(last_time_seen, "%Y-%m-%dT%H:%M:%S.%fZ")
+            last_time_seen_datetime = local_time_to_utc(last_time_seen_datetime)
+            new_last_time_seen = last_time_seen_datetime.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+            new_last_time_seen_object = obj
+            new_last_time_seen_object['value'] = new_last_time_seen
+    query = {'_id': ip_object['_id']}
+    update_operators_part1 = {'$pull': {'objects': {'type': 'Last Time Received'}}}
+    update_operators_part2 = {
+        '$set': {
+            'created': new_created_date,
+            'modified': pendulum.now('UTC'),
+            'status': 'Analyzed',
+        },
+        '$push': {'objects': new_last_time_seen_object}
+    }
+    ips.update_one(filter=query, update=update_operators_part1)
+    ips.update_one(filter=query, update=update_operators_part2)
+    number_of_ips += 1
+duration = datetime.now() - start_time
+print "Time to update IPs:", duration
+print "Number of IPs:", number_of_ips
 
 
-def update_event_object(event_object):
-    analyst = 'analysis_autofill'
-    # Hard-coded increment of 7 hours to each timestamp, because the issue occurred on a machine running on MST (UTC-7).
-    #event_object.created += timedelta(hours=7)
-    event_object.created = local_time_to_utc(event_object.created)
-    event_object.status = "Analyzed"
-    event_object.save(username=analyst)
-    return
+events = client.crits.events
+event_objects = events.find(filter=in_progress_filter)
+number_of_events = 0
 
-
-ip_objects = IP.objects()
-event_objects = Event.objects()
-pool = Pool(10)
-pool.map(update_ip_object, ip_objects)
-pool.map(update_event_object, event_objects)
+start_time = datetime.now()
+for event_object in event_objects:
+    new_created_date = local_time_to_utc(event_object['created'])
+    query = {'_id': event_object['_id']}
+    update_operators = {
+        '$set': {
+            'created': new_created_date,
+            'modified': pendulum.now('UTC'),
+            'status': 'Analyzed'
+        }
+    }
+    events.update_one(filter=query, update=update_operators)
+    number_of_events += 1
+duration = datetime.now() - start_time
+print "Time to update Events:", duration
+print "Number of Events:", number_of_events

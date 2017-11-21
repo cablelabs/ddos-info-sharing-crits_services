@@ -26,20 +26,22 @@ class UserStatisticsReporter:
         self.report_file_message_filename = self.reports_directory + 'report_file_message.txt'
         with open(reporting_config_filename, 'r') as reporting_config_file:
             configs = json.load(reporting_config_file)
-            self.sender_email = configs['sender_email']
+            self.sender_email = str(configs['sender_email'])
             self.report_file_recipients = configs['recipients']
+            self.password = str(configs['password'])
 
     def run(self):
         # Store today's date to make sure all calculations are done relative to this date.
-        today = pendulum.today('UTC')
+        today_utc = pendulum.today('UTC')
         # TODO: Remove conversion once I fix timestamp discrepancies in CRITs.
-        today = self.utc_to_local_time(today)
+        today = self.utc_to_local_time(today_utc)
         yesterday_start = today.subtract(days=1)
         yesterday_end = today.subtract(microseconds=1)
-        report_date = yesterday_start.to_date_string()
-        user_statistics_file_path = self.reports_directory+'user_statistics_for_'+report_date+'.csv'
+        report_datetime = today_utc.subtract(days=1)
+        report_date_string = report_datetime.to_date_string()
+        user_statistics_file_path = self.reports_directory+'user_statistics_for_'+report_date_string+'.csv'
         self.write_statistics(user_statistics_file_path, yesterday_start, yesterday_end)
-        self.email_statistics(user_statistics_file_path, yesterday_start)
+        self.email_statistics(user_statistics_file_path, report_datetime)
 
     @staticmethod
     def utc_to_local_time(utc_datetime):
@@ -73,8 +75,10 @@ class UserStatisticsReporter:
                 print "Wrote number of submissions for user '" + username + "'."
 
     def email_statistics(self, report_filepath, report_date):
-        server = smtplib.SMTP(host='mailhost.cablelabs.com')
+        server = smtplib.SMTP(host='smtp.office365.com', port=587)
+        server.ehlo()
         server.starttls()
+        server.login(self.sender_email, self.password)
         for recipient in self.report_file_recipients:
             report_message = MIMEMultipart()
             with open(self.report_file_message_filename, 'r') as report_file_message:
@@ -124,7 +128,10 @@ class UserStatisticsReporter:
                 to_email = get_email_address(username)
                 message['To'] = to_email
                 message['Date'] = formatdate(localtime=True)
-                message['Subject'] = "Statistics for User '" + username + "'"
+                if number_of_ips == 0 and number_of_events == 0:
+                    message['Subject'] = "Alert: No Data Received for User '" + username + "'"
+                else:
+                    message['Subject'] = "Statistics for User '" + username + "'"
                 message_string = message.as_string()
                 message_string = message_string.format(username=username,
                                                        number_of_ips=number_of_ips,
