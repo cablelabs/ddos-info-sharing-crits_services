@@ -28,37 +28,55 @@ class GlobalStatisticsReporter:
         stats_writer.writerow(['Statistic', 'Value', 'Time Collected'])
         try:
             time_collected_str = datetime.now().strftime(full_time_format)
+            start_time = datetime.now()
             total_ips = self.collector.count_ips()
+            duration = datetime.now() - start_time
+            print "Time to Count IPs:", duration
             stats_writer.writerow(['Total # of IPs', total_ips, time_collected_str])
             print "Wrote total number of IPs."
 
             time_collected_str = datetime.now().strftime(full_time_format)
+            start_time = datetime.now()
             total_events = self.collector.count_events()
+            duration = datetime.now() - start_time
+            print "Time to Count Events:", duration
             stats_writer.writerow(['Total # of Events', total_events, time_collected_str])
             print "Wrote total number of Events."
 
             time_collected_str = datetime.now().strftime(full_time_format)
+            start_time = datetime.now()
             total_ips_multiple_reporters = self.collector.count_ips_multiple_reporters()
+            duration = datetime.now() - start_time
+            print "Time to Count IPs, non-spoofed:", duration
             stats_writer.writerow(['# of IPs reported by multiple data providers', total_ips_multiple_reporters, time_collected_str])
             print "Wrote number of IPs reported by more than one data provider."
 
             time_collected_str = datetime.now().strftime(full_time_format)
+            start_time = datetime.now()
             total_events_multiple_reporters = self.collector.count_events_multiple_reporters()
+            duration = datetime.now() - start_time
+            print "Time to Count Events, non-spoofed:", duration
             stats_writer.writerow(['# of Events for IPs reported by multiple data providers', total_events_multiple_reporters, time_collected_str])
             print "Wrote number of Events for IPs reported by more than one data provider."
 
             stats_writer.writerow([])
             stats_writer.writerow(['Top Attack Types'])
             stats_writer.writerow(['Attack Type', 'Number of Events'])
-            #top_attack_type_counts = self.collector.count_events_top_attack_types_multiple_reporters()
-            #for attack_type, count in top_attack_type_counts:
-            #    stats_writer.writerow([attack_type, count])
+            start_time = datetime.now()
+            top_attack_type_counts = self.collector.count_events_top_attack_types_multiple_reporters()
+            for attack_type, count in top_attack_type_counts:
+                stats_writer.writerow([attack_type, count])
+            duration = datetime.now() - start_time
+            print "Time to Count Attack Types:", duration
             print "Wrote top 10 attack types."
 
             stats_writer.writerow([])
             stats_writer.writerow(['Top Attacking Countries'])
             stats_writer.writerow(['Country', 'Number of Events'])
+            start_time = datetime.now()
             top_attacking_country_counts = self.collector.count_events_top_attacking_countries_multiple_reporters()
+            duration = datetime.now() - start_time
+            print "Time to Count Countries:", duration
             for country, count in top_attacking_country_counts:
                 stats_writer.writerow([country, count])
             print "Wrote top 10 attacking countries."
@@ -93,7 +111,3 @@ class GlobalStatisticsReporter:
             except Exception as e:
                 print e
             server.close()
-
-
-reporter = GlobalStatisticsReporter()
-reporter.run()
