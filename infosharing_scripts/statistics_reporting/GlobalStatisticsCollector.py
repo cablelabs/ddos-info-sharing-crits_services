@@ -5,7 +5,6 @@ from StatisticsCollector import StatisticsCollector
 class GlobalStatisticsCollector(StatisticsCollector):
 
     def __init__(self):
-        #super(GlobalStatisticsCollector, self).__init__()
         StatisticsCollector.__init__(self)
         self.invalid_ip_blocks = [
             ipaddress.ip_network(u'0.0.0.0/8'), # IANA Local Identification Block
@@ -35,14 +34,33 @@ class GlobalStatisticsCollector(StatisticsCollector):
                 return False
         return True
 
-    def count_ips_multiple_reporters(self):
+    def count_ips_up_to_time(self, end_time):
+        """
+        :param end_time: The time up to which all statistics are measured, inclusive.
+        :type end_time: datetime (preferably created using 'pendulum' library)
+        :return: int
+        """
+        return self.ips.count(filter={'created': {'$lte': end_time}})
+
+    def count_events_up_to_time(self, end_time):
+        """
+        :param end_time: The time up to which all statistics are measured, inclusive.
+        :type end_time: datetime (preferably created using 'pendulum' library)
+        :return: int
+        """
+        return self.events.count(filter={'created': {'$lte': end_time}})
+
+    def count_ips_multiple_reporters(self, end_time):
         """
         Count the number of IP addresses that ...validated. There are two criteria:
         1) The IP address has been reported by multiple sources.
         2) The IP address is not a bogon address.
-        :return:
+        :param end_time: The time up to which all statistics are measured, inclusive.
+        :type end_time: datetime (preferably created using 'pendulum' library)
+        :return: int
         """
         pipeline = [
+            {'$match': {'created': {'$lte': end_time}}},
             {
                 '$project': {
                     '_id': 0,
@@ -70,12 +88,15 @@ class GlobalStatisticsCollector(StatisticsCollector):
                 count += 1
         return count
 
-    def count_events_multiple_reporters(self):
+    def count_events_multiple_reporters(self, end_time):
         """
         Count the number of Events corresponding to IP addresses that have been reported by multiple sources.
+        :param end_time: The time up to which all statistics are measured, inclusive.
+        :type end_time: datetime (preferably created using 'pendulum' library)
         :return: int
         """
         pipeline = [
+            {'$match': {'created': {'$lte': end_time}}},
             {
                 '$project': {
                     '_id': 0,
@@ -104,15 +125,18 @@ class GlobalStatisticsCollector(StatisticsCollector):
                 count += ip_object['numberOfEvents']
         return count
 
-    def count_events_top_attack_types_multiple_reporters(self, number_of_attack_types=10):
+    def count_events_top_attack_types_multiple_reporters(self, end_time, number_of_attack_types=10):
         """
         Find the top attack types based on number of events with a given attack type and are for IPs with multiple
         reporters. Return the number of events for the top attack types.
+        :param end_time: The time up to which all statistics are measured, inclusive.
+        :type end_time: datetime (preferably created using 'pendulum' library)
         :param number_of_attack_types: The maximum number of attack types to return.
         :type number_of_attack_types: int
         :return: array of 2-tuples whose type is (string, int)
         """
         pipeline = [
+            {'$match': {'created': {'$lte': end_time}}},
             {'$unwind': '$objects'},
             {
                 '$match': {
@@ -152,16 +176,18 @@ class GlobalStatisticsCollector(StatisticsCollector):
             i += number_of_ids
         return sorted(attack_type_counts.iteritems(), key=lambda (k, v): v, reverse=True)[:number_of_attack_types]
 
-    def count_events_top_attacking_countries_multiple_reporters(self, number_of_countries=10):
+    def count_events_top_attacking_countries_multiple_reporters(self, end_time, number_of_countries=10):
         """
         For each country, count the number of events corresponding to IP addresses whose geoIP information maps to that
         country and has been reported by multiple sources. Then, return only the countries with the highest counts
         (along with their counts).
+        :param end_time: The time up to which all statistics are measured, inclusive.
+        :type end_time: datetime (preferably created using 'pendulum' library)
         :param number_of_countries: The maximum number of countries to return.
         :type number_of_countries: int
         :return: array of 2-tuples whose type is (string, int)
         """
-        ip_objects = self.ips.find()
+        ip_objects = self.ips.find(filter={'created': {'$lte': end_time}})
         countries_counts = {}
         for ip_object in ip_objects:
             ip_address = ip_object['ip']
