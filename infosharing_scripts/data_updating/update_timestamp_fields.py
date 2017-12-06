@@ -11,77 +11,181 @@ When new values are saved to an object, the 'modified' time of that object will 
 (specifically the time when the values were saved).
 """
 from datetime import datetime
+import re
 import pytz
 from tzlocal import get_localzone
 from pymongo import MongoClient
 import pendulum
 
 
-def local_time_to_utc(local_datetime):
-    """
-    Return the UTC time equivalent to the input local datetime.
-    :param local_datetime: datetime object
-    :return: datetime object
-    """
-    local_timezone = get_localzone()
-    localized_time = local_timezone.localize(local_datetime)
-    utc_time = localized_time.astimezone(pytz.utc)
-    return utc_time
+class UpdateTimestampFields:
 
-print "Script Start (UTC):", pendulum.now('UTC')
-in_progress_filter = {'status': 'In Progress'}
-client = MongoClient()
-ips = client.crits.ips
-ip_objects = ips.find(filter=in_progress_filter)
-number_of_ips = 0
+    def __init__(self):
+        client = MongoClient()
+        self.ips = client.crits.ips
+        self.events = client.crits.events
 
-start_time = datetime.now()
-for ip_object in ip_objects:
-    new_created_date = local_time_to_utc(ip_object['created'])
-    new_last_time_seen_object = None
-    for obj in ip_object['objects']:
-        if obj['type'] == 'Last Time Received':
-            last_time_seen = obj['value']
-            last_time_seen_datetime = datetime.strptime(last_time_seen, "%Y-%m-%dT%H:%M:%S.%fZ")
-            last_time_seen_datetime = local_time_to_utc(last_time_seen_datetime)
-            new_last_time_seen = last_time_seen_datetime.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
-            new_last_time_seen_object = obj
-            new_last_time_seen_object['value'] = new_last_time_seen
-    query = {'_id': ip_object['_id']}
-    update_operators_part1 = {'$pull': {'objects': {'type': 'Last Time Received'}}}
-    update_operators_part2 = {
-        '$set': {
-            'created': new_created_date,
-            'modified': pendulum.now('UTC'),
-            'status': 'Analyzed',
-        },
-        '$push': {'objects': new_last_time_seen_object}
-    }
-    ips.update_one(filter=query, update=update_operators_part1)
-    ips.update_one(filter=query, update=update_operators_part2)
-    number_of_ips += 1
-duration = datetime.now() - start_time
-print "Time to update IPs:", duration
-print "Number of IPs:", number_of_ips
+    def run(self):
+        print "Script Start (UTC):", pendulum.now('UTC')
+        self.update_ips()
+        self.update_events()
+
+    def update_ips(self):
+        ip_objects = self.ips.find(filter={'status': 'In Progress'})
+        number_of_ips = 0
+        start_time = datetime.now()
+        for ip_object in ip_objects:
+            new_created_date = self.local_time_to_utc(ip_object['created'])
+            new_relationships = self.updated_relationships(ip_object)
+            new_sources = self.updated_sources(ip_object)
+            new_objects = self.updated_objects(ip_object)
+            query = {'_id': ip_object['_id']}
+            update_operators = {
+                '$set': {
+                    'created': new_created_date,
+                    'modified': pendulum.now('UTC'),
+                    'status': 'Analyzed',
+                    'relationships': new_relationships,
+                    'source': new_sources,
+                    'objects': new_objects
+                }
+            }
+            self.ips.update_one(filter=query, update=update_operators)
+            number_of_ips += 1
+        duration = datetime.now() - start_time
+        print "Time to update IPs:", duration
+        print "Number of IPs:", number_of_ips
+
+    def update_events(self):
+        event_objects = self.events.find(filter={'status': 'In Progress'})
+        number_of_events = 0
+        start_time = datetime.now()
+        for event_object in event_objects:
+            new_created_date = self.local_time_to_utc(event_object['created'])
+            new_relationships = self.updated_relationships(event_object)
+            new_sources = self.updated_sources(event_object)
+            new_objects = self.updated_objects(event_object)
+            query = {'_id': event_object['_id']}
+            update_operators = {
+                '$set': {
+                    'created': new_created_date,
+                    'modified': pendulum.now('UTC'),
+                    'status': 'New',
+                    'title': self.new_title(event_object['title']),
+                    'relationships': new_relationships,
+                    'source': new_sources,
+                    'objects': new_objects
+                }
+            }
+            self.events.update_one(filter=query, update=update_operators)
+            number_of_events += 1
+        duration = datetime.now() - start_time
+        print "Time to update Events:", duration
+        print "Number of Events:", number_of_events
+
+    def new_title(self, title):
+        timestamp_string = self.timestamp_str_from_title(title)
+        try:
+            timestamp_datetime = datetime.strptime(timestamp_string, "%Y-%m-%dT%H:%M:%S.%fZ")
+        except ValueError:
+            return title
+        timestamp_datetime = self.local_time_to_utc(timestamp_datetime)
+        new_timestamp_string = timestamp_datetime.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+        title_split = title.split('Time')
+        title_prefix = title_split[0]
+        new_title = title_prefix + 'Time:[' + new_timestamp_string + ']'
+        return new_title
+
+    @staticmethod
+    def timestamp_str_from_title(title):
+        # Extract timestamp string from input title of some Event object
+        search_query = "Time:\[.*\]"
+        results = re.findall(search_query, title)
+        main_result = results[0]
+        split1 = main_result.split('Time:[')
+        main_result = filter(None, split1)[0]
+        split2 = main_result.split(']')
+        main_result = filter(None, split2)[0]
+        return main_result
+
+    def updated_relationships(self, document):
+        new_relationships = []
+        for relationship in document['relationships']:
+            relationship['relationship_date'] = self.local_time_to_utc(relationship['relationship_date'])
+            relationship['date'] = self.local_time_to_utc(relationship['date'])
+            new_relationships.append(relationship)
+        return new_relationships
+
+    def updated_sources(self, document):
+        # Update "date" of each "instance" of each "source" of overall document.
+        new_sources = []
+        for src in document['source']:
+            new_instances = []
+            for instance in src['instances']:
+                instance['date'] = self.local_time_to_utc(instance['date'])
+                new_instances.append(instance)
+            src['instances'] = new_instances
+            new_sources.append(src)
+        return new_sources
+
+    def updated_objects(self, document):
+        """
+        Created new versions of all objects of given Document, with all timestamp fields updated.
+        :param document: The Document to update.
+        :return:
+        """
+        new_objects = []
+        for obj in document['objects']:
+            obj['date'] = self.local_time_to_utc(obj['date'])
+            # Update "date" of each "instance" of each "source" of current object.
+            new_sources = []
+            for src in obj['source']:
+                new_instances = []
+                for instance in src['instances']:
+                    instance['date'] = self.local_time_to_utc(instance['date'])
+                    new_instances.append(instance)
+                src['instances'] = new_instances
+                new_sources.append(src)
+                obj['source'] = new_sources
+            # Update values of timestamp objects.
+            if obj['type'] == 'Last Time Received':
+                last_time_seen = obj['value']
+                last_time_seen_datetime = None
+                try:
+                    last_time_seen_datetime = datetime.strptime(last_time_seen, "%Y-%m-%dT%H:%M:%S.%fZ")
+                except ValueError:
+                    pass
+                if last_time_seen_datetime:
+                    last_time_seen_datetime = self.local_time_to_utc(last_time_seen_datetime)
+                    new_last_time_seen = last_time_seen_datetime.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
+                    obj['value'] = new_last_time_seen
+            elif obj['type'] == 'Attack Start Time':
+                # Add "Z" to the end if there is no "Z" or "z" in the timestamp.
+                attack_start_time = obj['value']
+                if "z" not in attack_start_time and "Z" not in attack_start_time:
+                    attack_start_time += "Z"
+                    obj['value'] = attack_start_time
+            elif obj['type'] == 'Attack Stop Time':
+                # Add "Z" to the end if there is no "Z" or "z" in the timestamp.
+                attack_stop_time = obj['value']
+                if "z" not in attack_stop_time and "Z" not in attack_stop_time:
+                    attack_stop_time += "Z"
+                    obj['value'] = attack_stop_time
+            new_objects.append(obj)
+        return new_objects
+
+    @staticmethod
+    def local_time_to_utc(local_datetime):
+        """
+        Return the UTC time equivalent to the input local datetime.
+        :param local_datetime: datetime object
+        :return: datetime object
+        """
+        local_timezone = get_localzone()
+        localized_time = local_timezone.localize(local_datetime)
+        utc_time = localized_time.astimezone(pytz.utc)
+        return utc_time
 
 
-events = client.crits.events
-event_objects = events.find(filter=in_progress_filter)
-number_of_events = 0
-
-start_time = datetime.now()
-for event_object in event_objects:
-    new_created_date = local_time_to_utc(event_object['created'])
-    query = {'_id': event_object['_id']}
-    update_operators = {
-        '$set': {
-            'created': new_created_date,
-            'modified': pendulum.now('UTC'),
-            'status': 'New'
-        }
-    }
-    events.update_one(filter=query, update=update_operators)
-    number_of_events += 1
-duration = datetime.now() - start_time
-print "Time to update Events:", duration
-print "Number of Events:", number_of_events
+update = UpdateTimestampFields()
+update.run()

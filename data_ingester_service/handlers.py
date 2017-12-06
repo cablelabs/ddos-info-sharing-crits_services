@@ -1,5 +1,5 @@
-from datetime import datetime
 import ipaddress
+import pendulum
 
 from crits.events.event import Event
 from crits.events.handlers import add_new_event
@@ -75,7 +75,7 @@ def save_new_event(analyst, source, ingest_data_entry):
     ip_address = ingest_data_entry.get('IPaddress')
     ip_object = IP.objects(ip=ip_address).first()
     ip_object_id = ip_object.id
-    current_time = datetime.now()
+    current_time = pendulum.now('UTC')
     title = "IP:[" + ip_address + "],Time:[" + current_time.strftime('%Y-%m-%dT%H:%M:%S.%fZ') + "]"
     result = add_new_event(title=title,
                            description='',
@@ -145,7 +145,7 @@ def update_ip_object_additional_fields(analyst, source, ip_address):
     ip_object = IP.objects(ip=ip_address).first()
     is_last_time_received_present = False
     is_number_of_times_seen_present = False
-    current_time_string = datetime.now().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+    current_time_string = pendulum.now('UTC').strftime('%Y-%m-%dT%H:%M:%S.%fZ')
     for o in ip_object.obj:
         if o.object_type == ObjectTypes.LAST_TIME_RECEIVED:
             o.value = current_time_string
