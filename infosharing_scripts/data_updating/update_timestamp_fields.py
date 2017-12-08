@@ -159,18 +159,14 @@ class UpdateTimestampFields:
                     last_time_seen_datetime = self.local_time_to_utc(last_time_seen_datetime)
                     new_last_time_seen = last_time_seen_datetime.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
                     obj['value'] = new_last_time_seen
-            elif obj['type'] == 'Attack Start Time':
-                # Add "Z" to the end if there is no "Z" or "z" in the timestamp.
-                attack_start_time = obj['value']
-                if "z" not in attack_start_time and "Z" not in attack_start_time:
-                    attack_start_time += "Z"
-                    obj['value'] = attack_start_time
-            elif obj['type'] == 'Attack Stop Time':
-                # Add "Z" to the end if there is no "Z" or "z" in the timestamp.
-                attack_stop_time = obj['value']
-                if "z" not in attack_stop_time and "Z" not in attack_stop_time:
-                    attack_stop_time += "Z"
-                    obj['value'] = attack_stop_time
+            elif obj['type'] == 'Attack Start Time' or obj['type'] == 'Attack Stop Time':
+                # Add "Z" to the end if there is no timezone, and replace lowercase "z" with uppercase "Z".
+                attack_time = obj['value']
+                attack_time_split = attack_time.split('z')
+                attack_time = filter(None, attack_time_split)[0]
+                if "Z" not in attack_time:
+                    attack_time += "Z"
+                    obj['value'] = attack_time
             new_objects.append(obj)
         return new_objects
 
