@@ -2,21 +2,18 @@ import pytz
 from tzlocal import get_localzone
 import pendulum
 from UserStatisticsCollector import UserStatisticsCollector
-from UserStatisticsReporter import UserStatisticsReporter
 
 
 class UserStatisticsTester:
 
     def __init__(self):
         self.collector = UserStatisticsCollector()
-        self.reporter = UserStatisticsReporter()
 
     def test_collector(self):
-        today = pendulum.today('UTC')
-        # TODO: Remove conversion once I fix timestamp discrepancies in CRITs.
-        today = self.utc_to_local_time(today)
-        yesterday_start = today.subtract(days=1)
-        yesterday_end = today.subtract(microseconds=1)
+        # Store today's date to make sure all calculations are done relative to this date.
+        today_utc = pendulum.today('UTC')
+        yesterday_start = today_utc.subtract(days=1)
+        yesterday_end = today_utc.subtract(microseconds=1)
         for user in self.collector.find_users():
             username = user['username']
             submissions_counts = self.collector.count_submissions_from_user_within_duration(username, yesterday_start, yesterday_end)

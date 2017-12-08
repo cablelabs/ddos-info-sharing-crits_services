@@ -33,15 +33,12 @@ class UserStatisticsReporter:
     def run(self):
         # Store today's date to make sure all calculations are done relative to this date.
         today_utc = pendulum.today('UTC')
-        # TODO: Remove conversion once I fix timestamp discrepancies in CRITs.
-        today = self.utc_to_local_time(today_utc)
-        yesterday_start = today.subtract(days=1)
-        yesterday_end = today.subtract(microseconds=1)
-        report_datetime = today_utc.subtract(days=1)
-        report_date_string = report_datetime.to_date_string()
+        yesterday_start = today_utc.subtract(days=1)
+        yesterday_end = today_utc.subtract(microseconds=1)
+        report_date_string = yesterday_start.to_date_string()
         user_statistics_file_path = self.reports_directory+'user_statistics_for_'+report_date_string+'.csv'
         self.write_statistics(user_statistics_file_path, yesterday_start, yesterday_end)
-        self.email_statistics(user_statistics_file_path, report_datetime)
+        self.email_statistics(user_statistics_file_path, yesterday_start)
 
     @staticmethod
     def utc_to_local_time(utc_datetime):
@@ -72,7 +69,6 @@ class UserStatisticsReporter:
                     'Events': submissions_counts['events']
                 }
                 stats_writer.writerow(next_row)
-                print "Wrote number of submissions for user '" + username + "'."
 
     def email_statistics(self, report_filepath, report_date):
         server = smtplib.SMTP(host='smtp.office365.com', port=587)

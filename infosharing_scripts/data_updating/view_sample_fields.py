@@ -6,8 +6,7 @@ client = MongoClient()
 ips = client.crits.ips
 events = client.crits.events
 
-
-field_names = ['ID', 'IP address', 'created', 'Last Time Received']
+field_names = ['ID', 'IP address', 'created', 'Last Time Received', 'modified']
 with open('samples_before_update.csv', 'r') as samples_before_file:
     samples_before_reader = csv.DictReader(samples_before_file)
     with open('samples_after_update.csv', 'w') as samples_after_file:
@@ -22,13 +21,16 @@ with open('samples_before_update.csv', 'r') as samples_before_file:
                     'ID': ip_object['_id'],
                     'IP address': ip_object['ip'],
                     'created': ip_object['created'],
-                    'Last Time Received': 'N/A'
+                    'Last Time Received': None,
+                    'modified': ip_object['modified']
                 }
                 for o in ip_object['objects']:
                     if o['type'] == 'Last Time Received':
-                        next_row['Last Time Received'] = o['value']
-                        # Note: We expect only one value for 'Last Time Received' in our application.
-                        break
+                        # We expect only one value for 'Last Time Received'. Make a note if there's multiple values.
+                        if next_row['Last Time Received']:
+                            next_row['Last Time Received'] = '(multiple values)'
+                        else:
+                            next_row['Last Time Received'] = o['value']
                 samples_after_writer.writerow(next_row)
             else:
                 event_object = events.find_one(filter={'_id': object_id})
@@ -36,6 +38,7 @@ with open('samples_before_update.csv', 'r') as samples_before_file:
                     'ID': event_object['_id'],
                     'IP address': 'Event',
                     'created': event_object['created'],
-                    'Last Time Received': 'N/A'
+                    'Last Time Received': 'N/A',
+                    'modified': event_object['modified']
                 }
                 samples_after_writer.writerow(next_row)
