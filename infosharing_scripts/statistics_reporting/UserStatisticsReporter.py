@@ -124,7 +124,7 @@ class UserStatisticsReporter:
                 to_email = get_email_address(username)
                 message['To'] = to_email
                 message['Date'] = formatdate(localtime=True)
-                if number_of_ips == 0 and number_of_events == 0:
+                if number_of_ips == '0' and number_of_events == '0':
                     message['Subject'] = "Alert: No Data Received for User '" + username + "'"
                 else:
                     message['Subject'] = "Statistics for User '" + username + "'"
