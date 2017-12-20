@@ -15,6 +15,6 @@ with open(config_filename, 'r') as config_file:
 if earliest_datetime is None:
     sys.exit("Error: earliest_datetime not defined.")
 
-# TODO: see if warning about Pendulum type input is important
+# Note: Event though IDE may say 'earliest_datetime' is a Pendulum object, it still counts as a datetime.
 purger = OldDataPurger()
 purger.delete_data_before_datetime(earliest_datetime)

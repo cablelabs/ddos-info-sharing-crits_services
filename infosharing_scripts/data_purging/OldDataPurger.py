@@ -56,7 +56,7 @@ class OldDataPurger:
         :type earliest_datetime: datetime
         :return: (nothing)
         """
-        self.delete_old_data_sequential_v1(earliest_datetime)
+        self.delete_old_data_sequential_v2(earliest_datetime)
 
     def delete_old_data_sequential_v1(self, earliest_datetime):
         """
@@ -165,11 +165,11 @@ class OldDataPurger:
                 ip_id = relationship['value']
                 ip_id_query = {'_id': ip_id}
                 if self.ips.count(filter=ip_id_query) == 1:
-                    update = {'$pull': {'relationships.id': event_object['_id']}}
+                    update = {'$pull': {'relationships': {'value': event_object['_id']}}}
                     self.ips.update_one(filter=ip_id_query, update=update)
                     if ip_id not in ids_of_ips_to_reanalyze:
                         ids_of_ips_to_reanalyze.append(ip_id)
-                    ip_object = self.ips.find(filter=ip_id_query)
+                    ip_object = self.ips.find_one(filter=ip_id_query)
                     if ip_object is not None and len(ip_object['relationships']) == 0:
                         # Archive the IP object and delete it.
                         archive_ip_object = {'ip': ip_object['ip']}
@@ -186,7 +186,7 @@ class OldDataPurger:
         # Set status of IPs that had Events removed to "In Progress" so analytics service re-runs on those IPs.
         ip_ids_query = {'_id': {'$in': ids_of_ips_to_reanalyze}}
         ip_status_update = {'$set': {'status': 'In Progress'}}
-        self.ips.update(filter=ip_ids_query, update=ip_status_update)
+        self.ips.update_many(filter=ip_ids_query, update=ip_status_update)
         return
 
     # PROBABLY WON'T BE USED
@@ -217,31 +217,3 @@ class OldDataPurger:
         duration = pendulum.now() - start_time
         print "Time to update IPs, sequential:", duration
         return
-
-    # def delete_old_data_parallel(self, earliest_datetime):
-    #     return
-    #
-    #
-    # def delete_old_ips(self, months=0, days=0):
-    #     # Aggregation query in future version: in IPs collection, unwind objects, filter on type "Last Time Received"...
-    #     number_of_ips_before = self.ips.count()
-    #     time_now = pendulum.now('UTC')
-    #     earliest_date = time_now.subtract(months=months, days=days)
-    #     query = {'modified': {'$lt': earliest_date}}
-    #     self.ips.delete_many(filter=query)
-    #     print "IPs Deleted:", number_of_ips_before - self.ips.count()
-    #     return
-    #
-    # def delete_ips(self):
-    #     """
-    #     Delete IPs until there are about 10,000 in the database.
-    #     :return:
-    #     """
-    #     number_of_ips = self.ips.count()
-    #     pool = Pool(10)
-    #     increment = number_of_ips / 10000
-    #     ip_addresses = pool.map(retrieve_ith_ip_address, range(0, number_of_ips, increment))
-    #     #pool.map(remove_ip_object, ip_addresses)
-    #     pool.close()
-    #     self.ips.delete_many(filter={'ip': {'$nin': ip_addresses}})
-    #     print "IPs Deleted:", number_of_ips - self.ips.count()

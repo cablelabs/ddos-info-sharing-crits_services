@@ -167,6 +167,7 @@ def add_owning_source_to_ip(ip_object, as_number):
                     return
             source = create_embedded_source(source_name, analyst=analyst)
             if source:
+                # TODO: Does this line and save() result in two source instances whose analyst is "analysis_autofill"?
                 ip_object.add_source(source)
                 # Add a brand new releasability, and add an instance to that releasability.
                 #print "Adding releasability to IP '" + ip_object.ip + "' for source '" + source.name + "'."
@@ -220,15 +221,23 @@ def update_reporter_fields(ip_object):
     # Second, determine which sources are reporters by excluding those that have a releasability.
     # Obtain latest copy of IP object so the new releasability, if any, is accounted for.
     current_ip_object = IP.objects(id=ip_object.id).first()
-    source_names = [x['name'] for x in current_ip_object['source']]
-    releasability_names = [x['name'] for x in current_ip_object['releasability']]
-    reporter_names_set = set(source_names).difference(set(releasability_names))
+    #source_names = [x['name'] for x in current_ip_object['source']]
+    source_names = []
+    for src in current_ip_object['source']:
+        for instance in src['instances']:
+            if instance['analyst'] != 'analysis_autofill':
+                source_name = src['name']
+                if source_name not in source_names:
+                    source_names.append(source_name)
+                break
+    #releasability_names = [x['name'] for x in current_ip_object['releasability']]
+    #reporter_names_set = set(source_names).difference(set(releasability_names))
 
     # Finally, update the appropriate sub-objects in the IP object.
-    for reporter in reporter_names_set:
+    for reporter in source_names:
         # Don't use my wrapper function to update sub-object, because the goal is to save each reporter name.
         ip_object.add_object(ObjectTypes.REPORTED_BY, reporter, get_user_organization(analyst), '', '', analyst)
-    number_of_reporters_str = str(len(reporter_names_set))
+    number_of_reporters_str = str(len(source_names))
     update_ip_object_sub_object(ip_object, ObjectTypes.NUMBER_OF_REPORTERS, number_of_reporters_str)
 
 
