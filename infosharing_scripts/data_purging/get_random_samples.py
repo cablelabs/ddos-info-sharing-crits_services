@@ -19,7 +19,7 @@ sample_size = 1000
 client = MongoClient()
 ips = client.crits.ips
 events = client.crits.events
-config_filename = 'duration_config.json'
+config_filename = '/data/configs/duration_config.json'
 with open(config_filename, 'r') as config_file:
     configs = json.load(config_file)
     months = configs['months']

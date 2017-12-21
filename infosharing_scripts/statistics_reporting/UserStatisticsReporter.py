@@ -20,10 +20,11 @@ class UserStatisticsReporter:
 
     def __init__(self):
         self.collector = UserStatisticsCollector()
+        configs_directory = "/data/configs/"
         self.reports_directory = "/data/reports/"
-        reporting_config_filename = self.reports_directory + "reporting_config.json"
-        self.user_statistics_message_filename = self.reports_directory + 'user_statistics_message.txt'
-        self.report_file_message_filename = self.reports_directory + 'report_file_message.txt'
+        reporting_config_filename = configs_directory + "reporting_config.json"
+        self.user_statistics_message_filename = configs_directory + 'user_statistics_message.txt'
+        self.report_file_message_filename = configs_directory + 'report_file_message.txt'
         with open(reporting_config_filename, 'r') as reporting_config_file:
             configs = json.load(reporting_config_file)
             self.sender_email = str(configs['sender_email'])

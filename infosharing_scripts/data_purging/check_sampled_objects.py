@@ -20,7 +20,7 @@ def is_relationships_equal(r1, r2):
 client = MongoClient()
 ips = client.crits.ips
 events = client.crits.events
-config_filename = 'duration_config.json'
+config_filename = '/data/configs/duration_config.json'
 with open(config_filename, 'r') as config_file:
     configs = json.load(config_file)
     months = configs['months']
@@ -29,7 +29,7 @@ with open(config_filename, 'r') as config_file:
     earliest_datetime = today_datetime.subtract(months=months, days=days)
 if earliest_datetime is None:
     sys.exit("Error: earliest_datetime not defined.")
-with open('/home/infosharing/Documents/Python Files/samples_before_update.json', 'r') as samples_file:
+with open('samples_before_update.json', 'r') as samples_file:
     saved_data = json.load(samples_file, object_hook=json_util.object_hook)
 
 
