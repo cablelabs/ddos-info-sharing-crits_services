@@ -149,9 +149,10 @@ class OldDataPurger:
         """
         start_time = pendulum.now()
         query = {'created': {'$lt': earliest_datetime}}
-        event_objects = self.events.find(filter=query)
+        event_objects = self.events.find(filter=query).batch_size(10)
         ids_of_ips_to_reanalyze = []
         for event_object in event_objects:
+            found_event = False
             # Archive the Event object.
             # Note: We expect the Event to have exactly one source.
             for src in event_object['source']:
@@ -159,7 +160,12 @@ class OldDataPurger:
                     'report_date': event_object['created'],
                     'reported_by': src['name']
                 }
-                self.old_events.insert_one(archive_event_object)
+                if self.old_events.count(filter=archive_event_object) <= 0:
+                    self.old_events.insert_one(archive_event_object)
+                else:
+                    found_event = True
+            if found_event:
+                continue
             # Note: We expect the Event object to have exactly one relationship.
             for relationship in event_object['relationships']:
                 ip_id = relationship['value']
