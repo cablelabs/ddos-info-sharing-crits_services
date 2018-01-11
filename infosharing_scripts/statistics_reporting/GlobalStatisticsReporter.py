@@ -1,6 +1,7 @@
-import csv, os
-from datetime import datetime
-import json, smtplib
+import csv
+import json
+import os
+import smtplib
 from smtplib import SMTPRecipientsRefused, SMTPHeloError, SMTPSenderRefused, SMTPDataError, SMTPServerDisconnected
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -16,9 +17,9 @@ class GlobalStatisticsReporter:
 
     def __init__(self):
         self.collector = GlobalStatisticsCollector()
-        #self.reports_directory = "/data/reports/"
-        self.reports_directory = ""
-        reporting_config_filename = self.reports_directory + "reporting_config.json"
+        configs_directory = "/data/reports"
+        self.reports_directory = "/data/reports/"
+        reporting_config_filename = configs_directory + "reporting_config.json"
         self.global_statistics_message_filename = self.reports_directory + 'global_statistics_message.txt'
         with open(reporting_config_filename, 'r') as reporting_config_file:
             configs = json.load(reporting_config_file)
@@ -31,8 +32,8 @@ class GlobalStatisticsReporter:
         today_utc = pendulum.today('UTC')
         yesterday_utc_date_string = today_utc.subtract(days=1).to_date_string()
         global_statistics_file_path = self.reports_directory+'global_statistics_through_'+yesterday_utc_date_string+'.csv'
-        yesterday_end_utc = today_utc.subtract(microseconds=1)
-        self.write_statistics(global_statistics_file_path, yesterday_end_utc)
+        yesterday_end = today_utc.subtract(microseconds=1)
+        self.write_statistics(global_statistics_file_path, yesterday_end)
         self.email_statistics(global_statistics_file_path)
 
     def write_statistics(self, file_path, end_time):
@@ -43,61 +44,55 @@ class GlobalStatisticsReporter:
         :type end_time: datetime (preferably created using 'pendulum' library)
         :return:
         """
-        csv_file = open(file_path, 'wb')
-        stats_writer = csv.writer(csv_file)
-        stats_writer.writerow(['Statistic', 'Value'])
-        try:
-            start_time = datetime.now()
+        with open(file_path, 'wb') as csv_file:
+            stats_writer = csv.writer(csv_file)
+            stats_writer.writerow(['Statistic', 'Value'])
+
+            start_time = pendulum.now()
             total_ips = self.collector.count_ips_up_to_time(end_time)
-            duration = datetime.now() - start_time
+            duration = pendulum.now() - start_time
             print "Time to Count IPs:", duration
             stats_writer.writerow(['Total # of IPs', total_ips])
             print "Wrote total number of IPs."
 
-            start_time = datetime.now()
+            start_time = pendulum.now()
             total_events = self.collector.count_events_up_to_time(end_time)
-            duration = datetime.now() - start_time
+            duration = pendulum.now() - start_time
             print "Time to Count Events:", duration
             stats_writer.writerow(['Total # of Events', total_events])
             print "Wrote total number of Events."
 
-            start_time = datetime.now()
-            total_ips_multiple_reporters = self.collector.count_ips_multiple_reporters(end_time)
-            duration = datetime.now() - start_time
-            print "Time to Count IPs, non-spoofed:", duration
-            stats_writer.writerow(['# of IPs reported by multiple data providers', total_ips_multiple_reporters])
-            print "Wrote number of IPs reported by more than one data provider."
-
-            start_time = datetime.now()
-            total_events_multiple_reporters = self.collector.count_events_multiple_reporters(end_time)
-            duration = datetime.now() - start_time
-            print "Time to Count Events, non-spoofed:", duration
-            stats_writer.writerow(['# of Events for IPs reported by multiple data providers', total_events_multiple_reporters])
-            print "Wrote number of Events for IPs reported by more than one data provider."
+            start_time = pendulum.now()
+            total_submissions_multiple_reporters = self.collector.count_submissions_multiple_reporters(end_time)
+            duration = pendulum.now() - start_time
+            print "Time to Count IPs and Events, non-spoofed:", duration
+            total_ips_multiple_reporters = total_submissions_multiple_reporters['ips']
+            stats_writer.writerow(['# of non-spoofed IPs with multiple reporters', total_ips_multiple_reporters])
+            total_events_multiple_reporters = total_submissions_multiple_reporters['events']
+            stats_writer.writerow(['# of Events for non-spoofed IPs with multiple reporters', total_events_multiple_reporters])
+            print "Wrote number of IPs and Events for non-spoofed IPs with multiple reporters."
 
             stats_writer.writerow([])
             stats_writer.writerow(['Top Attack Types'])
             stats_writer.writerow(['Attack Type', 'Number of Events'])
-            start_time = datetime.now()
+            start_time = pendulum.now()
             top_attack_type_counts = self.collector.count_events_top_attack_types_multiple_reporters(end_time)
+            duration = pendulum.now() - start_time
+            print "Time to Count Attack Types:", duration
             for attack_type, count in top_attack_type_counts:
                 stats_writer.writerow([attack_type, count])
-            duration = datetime.now() - start_time
-            print "Time to Count Attack Types:", duration
             print "Wrote top 10 attack types."
 
             stats_writer.writerow([])
             stats_writer.writerow(['Top Attacking Countries'])
             stats_writer.writerow(['Country', 'Number of Events'])
-            start_time = datetime.now()
+            start_time = pendulum.now()
             top_attacking_country_counts = self.collector.count_events_top_attacking_countries_multiple_reporters(end_time)
-            duration = datetime.now() - start_time
+            duration = pendulum.now() - start_time
             print "Time to Count Countries:", duration
             for country, count in top_attacking_country_counts:
                 stats_writer.writerow([country, count])
             print "Wrote top 10 attacking countries."
-        finally:
-            csv_file.close()
 
     def email_statistics(self, file_path):
         server = smtplib.SMTP(host='smtp.office365.com', port=587)

@@ -1,40 +1,14 @@
 from datetime import datetime
-import ipaddress
 import pendulum
 from GlobalStatisticsCollector import GlobalStatisticsCollector
+from IPAddressChecker import IPAddressChecker
 
 
 class GlobalStatisticsTester:
 
     def __init__(self):
         self.collector = GlobalStatisticsCollector()
-        self.invalid_ip_blocks = [
-            ipaddress.ip_network(u'0.0.0.0/8'),  # IANA Local Identification Block
-            ipaddress.ip_network(u'8.8.4.4/32'),  # Google Anycast DNS address
-            ipaddress.ip_network(u'8.8.8.8/32'),  # Google Anycast DNS address
-            ipaddress.ip_network(u'10.0.0.0/8'),  # Private address space
-            ipaddress.ip_network(u'100.0.0.0/8'),  # Private address space
-            ipaddress.ip_network(u'127.0.0.0/8'),  # Loopback block
-            ipaddress.ip_network(u'169.254.0.0/16'),
-            ipaddress.ip_network(u'172.16.0.0/12'),
-            ipaddress.ip_network(u'192.0.0.0/24'),
-            ipaddress.ip_network(u'192.0.2.0/24'),
-            ipaddress.ip_network(u'192.168.0.0/16'),
-            ipaddress.ip_network(u'198.18.0.0/15'),
-            ipaddress.ip_network(u'198.51.100.0/24'),
-            ipaddress.ip_network(u'203.0.113.0/24'),
-            ipaddress.ip_network(u'208.67.222.222/32'),  # OpenDNS
-            ipaddress.ip_network(u'224.0.0.0/4'),  # Multicast block (and more suggested by Rich)
-            ipaddress.ip_network(u'225.0.0.0/8'),  # Multicast block
-            ipaddress.ip_network(u'240.0.0.0/4')
-        ]
-
-    def is_valid_ip(self, ip_address):
-        ip_address_object = ipaddress.ip_address(ip_address)
-        for block in self.invalid_ip_blocks:
-            if ip_address_object in block:
-                return False
-        return True
+        self.ip_address_checker = IPAddressChecker()
 
     def test_collector(self):
         today_utc = pendulum.today('UTC')
@@ -42,7 +16,8 @@ class GlobalStatisticsTester:
 
         # Note to self: Confirm total number of IPs and Events by simply running count queries in MongoDB shell.
 
-        number_ips_multiple_reporters_collector = self.collector.count_ips_multiple_reporters(today_utc)
+        number_submissions_multiple_reporters_collector = self.collector.count_submissions_multiple_reporters(today_utc)
+        number_ips_multiple_reporters_collector = number_submissions_multiple_reporters_collector['ips']
         print "Collector:", number_ips_multiple_reporters_collector
         start_time = datetime.now()
         number_ips_multiple_reporters_manual = self.count_ips_multiple_reporters(today_utc)
@@ -50,7 +25,7 @@ class GlobalStatisticsTester:
         print "Manual:", number_ips_multiple_reporters_manual
         print "Duration to count IPs, multiple reporters, manual:", duration
 
-        number_events_multiple_reporters_collector = self.collector.count_events_multiple_reporters(today_utc)
+        number_events_multiple_reporters_collector = number_submissions_multiple_reporters_collector['events']
         print "Collector:", number_events_multiple_reporters_collector
         start_time = datetime.now()
         number_events_multiple_reporters_manual = self.count_events_multiple_reporters(today_utc)
@@ -80,7 +55,7 @@ class GlobalStatisticsTester:
         for ip_object in ip_objects:
             ip_address = ip_object['ip']
             if ip_object['created'] <= end_time:
-                if self.is_valid_ip(ip_address):
+                if self.ip_address_checker.is_valid_ip(ip_address):
                     for obj in ip_object['objects']:
                         if obj['type'] == 'Number of Reporters':
                             if int(obj['value']) > 1:
@@ -100,7 +75,7 @@ class GlobalStatisticsTester:
         for ip_object in ip_objects:
             ip_address = ip_object['ip']
             if ip_object['created'] <= end_time:
-                if self.is_valid_ip(ip_address):
+                if self.ip_address_checker.is_valid_ip(ip_address):
                     for obj in ip_object['objects']:
                         if obj['type'] == 'Number of Reporters':
                             if int(obj['value']) > 1:
@@ -127,7 +102,7 @@ class GlobalStatisticsTester:
         for ip_object in ip_objects:
             ip_address = ip_object['ip']
             if ip_object['created'] <= end_time:
-                if self.is_valid_ip(ip_address):
+                if self.ip_address_checker.is_valid_ip(ip_address):
                     for obj in ip_object['objects']:
                         if obj['type'] == 'Number of Reporters':
                             if int(obj['value']) > 1:
@@ -175,7 +150,7 @@ class GlobalStatisticsTester:
         countries_counts = {}
         for ip_object in ip_objects:
             ip_address = ip_object['ip']
-            if self.is_valid_ip(ip_address):
+            if self.ip_address_checker.is_valid_ip(ip_address):
                 number_of_events = 0
                 for relationship in ip_object['relationships']:
                     event_id = relationship['value']

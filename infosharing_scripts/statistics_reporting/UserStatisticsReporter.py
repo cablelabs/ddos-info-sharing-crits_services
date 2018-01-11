@@ -6,14 +6,11 @@ from smtplib import SMTPRecipientsRefused, SMTPHeloError, SMTPSenderRefused, SMT
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.utils import formatdate
-import pytz
-from tzlocal import get_localzone
 import pendulum
+from UserStatisticsCollector import UserStatisticsCollector
 
 os.environ['DJANGO_SETTINGS_MODULE'] = 'crits.settings'
 from crits.core.user_tools import get_user_email_notification, get_email_address
-
-from UserStatisticsCollector import UserStatisticsCollector
 
 
 class UserStatisticsReporter:
@@ -40,17 +37,6 @@ class UserStatisticsReporter:
         user_statistics_file_path = self.reports_directory+'user_statistics_for_'+report_date_string+'.csv'
         self.write_statistics(user_statistics_file_path, yesterday_start, yesterday_end)
         self.email_statistics(user_statistics_file_path, yesterday_start)
-
-    @staticmethod
-    def utc_to_local_time(utc_datetime):
-        """
-        Return the local time equivalent to the input UTC datetime (but return result as if it's UTC).
-        :param utc_datetime: datetime object
-        :return: datetime object
-        """
-        local_timezone = get_localzone()
-        local_datetime = utc_datetime.astimezone(local_timezone)
-        return local_datetime.replace(tzinfo=pytz.utc)
 
     def write_statistics(self, report_filepath, duration_start, duration_end):
         field_names = ['Username', 'First Name', 'Last Name', 'Company', 'Email', 'IPs', 'Events']

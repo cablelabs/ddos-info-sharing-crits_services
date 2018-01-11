@@ -25,12 +25,12 @@ def get_asn_data_from_ipwhois(ip_address):
 
 
 def get_as_number_from_ipwhois(ip_address):
-    result = get_rdap_lookup_result(ip_address)
-    return result['asn']
+    result = get_asn_data_from_ipwhois(ip_address)
+    return result['as_number']
 
 
 def get_country_code_from_ipwhois(ip_address):
-    result = get_rdap_lookup_result(ip_address)
+    result = get_asn_data_from_ipwhois(ip_address)
     return result['country_code']
 
 

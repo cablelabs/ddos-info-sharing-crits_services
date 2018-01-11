@@ -124,6 +124,11 @@ class DataDistributionResource(CRITsAPIResource):
                     raise ValueError("'modifiedSince' not a properly formatted datetime string. Format must be RFC 3339 compliant or 'YYYY-MM-DD'.")
             match_ip_received_stage = {'$match': {IPOutputFields.LAST_TIME_RECEIVED: {'$gte': modified_since}}}
             self.aggregation_pipeline.append(match_ip_received_stage)
+        require_multiple_reporters = self.request.GET.get('requireMultipleReporters', '')
+        truth_strings = ['true', 'True']
+        if require_multiple_reporters in truth_strings:
+            match_multiple_reporters_stage = {'$match': {IPOutputFields.REPORTED_BY: {'$size': {'$gt': 1}}}}
+            self.aggregation_pipeline.append(match_multiple_reporters_stage)
         unwind_relationships_stage = {'$unwind': '$relationships'}
         EVENT_FIELD = 'event'
         lookup_events_stage = {
