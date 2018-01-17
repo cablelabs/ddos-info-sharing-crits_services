@@ -1,11 +1,16 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 from dateutils import relativedelta
 from StatisticsCollector import StatisticsCollector
+from IPAddressChecker import IPAddressChecker
 
 
 class PrivateStatisticsCollector(StatisticsCollector):
 
-    def top_attacking_asn_counts(self, number_of_attack_types=10):
+    def __init__(self):
+        StatisticsCollector.__init__(self)
+        self.ip_address_checker = IPAddressChecker()
+
+    def top_attacking_asn_counts(self, number_of_asns=10):
         pipeline = [
             {
                 '$project': {
@@ -29,7 +34,7 @@ class PrivateStatisticsCollector(StatisticsCollector):
                 }
             },
             {'$sort': {'count': -1}},
-            {'$limit': number_of_attack_types}
+            {'$limit': number_of_asns}
         ]
         results = self.ips.aggregate(pipeline, allowDiskUse=True)
         counts = {}
@@ -39,8 +44,36 @@ class PrivateStatisticsCollector(StatisticsCollector):
             counts[as_number] = count
         return counts
 
-    def count_events_top_attacking_asns_multiple_reporters(self, number_of_asns=10):
-        raise NotImplementedError
+    def count_events_top_attacking_asns_multiple_reporters(self, end_time, number_of_asns=10):
+        """
+        Find the top attacking AS Numbers, and return the number of Events for these top attacking ASNs. This is
+        done by taking each ASN and counting the number of Events corresponding to IP addresses whose ASN lookup
+        information maps to that ASN. Only counts Events for IPs that have been reported by multiple sources.
+        :param end_time: The time up to which all statistics are measured, inclusive.
+        :type end_time: datetime (preferably created using 'pendulum' library)
+        :param number_of_asns: The maximum number of ASNs to return.
+        :type number_of_asns: int
+        :return: array of 2-tuples whose type is (string, int), sorted on 2nd value in descending order
+        """
+        ip_objects = self.ips.find(filter={'created': {'$lte': end_time}})
+        asns_counts = {}
+        for ip_object in ip_objects:
+            ip_address = ip_object['ip']
+            if self.ip_address_checker.is_valid_ip(ip_address):
+                asn = ''
+                number_of_reporters = 0
+                for obj in ip_object['objects']:
+                    if obj['type'] == 'AS Number':
+                        asn = obj['value']
+                    elif obj['type'] == 'Number of Reporters':
+                        number_of_reporters = int(obj['value'])
+                if number_of_reporters > 1:
+                    number_of_events = len(ip_object['relationships'])
+                    if asn not in asns_counts:
+                        asns_counts[asn] = number_of_events
+                    else:
+                        asns_counts[asn] += number_of_events
+        return sorted(asns_counts.iteritems(), key=lambda (k, v): v, reverse=True)[:number_of_asns]
 
     def count_submissions_per_period(self, period='day'):
         """

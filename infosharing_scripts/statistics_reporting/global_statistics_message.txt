@@ -1,3 +1,3 @@
 Message for User '{username}':
 
-Attached to this email is a summary of attack data reported by all users. Since data older than 30 days is deleted every day, the report only summarizes data from the last 30 days. A new report is sent once per week.
+Attached to this email is a summary of attack data reported by all users. Since data older than 30 days is deleted every day, the report only summarizes data from the last 30 days. A new report is sent once every Friday.

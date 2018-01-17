@@ -17,10 +17,10 @@ class GlobalStatisticsReporter:
 
     def __init__(self):
         self.collector = GlobalStatisticsCollector()
-        configs_directory = "/data/reports"
+        configs_directory = "/data/configs/"
         self.reports_directory = "/data/reports/"
         reporting_config_filename = configs_directory + "reporting_config.json"
-        self.global_statistics_message_filename = self.reports_directory + 'global_statistics_message.txt'
+        self.global_statistics_message_filename = configs_directory + 'global_statistics_message.txt'
         with open(reporting_config_filename, 'r') as reporting_config_file:
             configs = json.load(reporting_config_file)
             self.sender_email = str(configs['sender_email'])
@@ -106,17 +106,39 @@ class GlobalStatisticsReporter:
                 continue
             to_email = user['email']
             msg = MIMEMultipart()
+            with open(self.global_statistics_message_filename, 'r') as message_file_message:
+                body_text = message_file_message.read()
+            body_text = body_text.format(username=username) + "\n"
+            msg.attach(MIMEText(body_text))
             msg['From'] = self.sender_email
             msg['To'] = to_email
             msg['Date'] = formatdate(localtime=True)
-            msg['Subject'] = "Global Statistics"
-            # TODO: Figure out what file format our team and participants want.
-            global_stats_file = open(file_path, 'r')
-            global_stats_attachment = MIMEText(global_stats_file.read(), _subtype='csv')
+            msg['Subject'] = "DDoS Information Sharing Global Statistics"
+            with open(file_path, 'r') as global_stats_file:
+                global_stats_attachment = MIMEText(global_stats_file.read(), _subtype='csv')
             global_stats_attachment.add_header("Content-Disposition", 'attachment', filename='global_statistics.csv')
             msg.attach(global_stats_attachment)
             try:
                 server.sendmail(self.sender_email, to_email, msg.as_string())
+            except (SMTPRecipientsRefused, SMTPHeloError, SMTPSenderRefused,
+                    SMTPDataError, SMTPServerDisconnected) as e:
+                print "Error:", e
+        for email in self.report_file_recipients:
+            msg = MIMEMultipart()
+            with open(self.global_statistics_message_filename, 'r') as message_file_message:
+                body_text = message_file_message.read()
+            body_text = body_text.format(username=email) + "\n"
+            msg.attach(MIMEText(body_text))
+            msg['From'] = self.sender_email
+            msg['To'] = email
+            msg['Date'] = formatdate(localtime=True)
+            msg['Subject'] = "DDoS Information Sharing Global Statistics"
+            with open(file_path, 'r') as global_stats_file:
+                global_stats_attachment = MIMEText(global_stats_file.read(), _subtype='csv')
+            global_stats_attachment.add_header("Content-Disposition", 'attachment', filename='global_statistics.csv')
+            msg.attach(global_stats_attachment)
+            try:
+                server.sendmail(self.sender_email, email, msg.as_string())
             except (SMTPRecipientsRefused, SMTPHeloError, SMTPSenderRefused,
                     SMTPDataError, SMTPServerDisconnected) as e:
                 print "Error:", e
