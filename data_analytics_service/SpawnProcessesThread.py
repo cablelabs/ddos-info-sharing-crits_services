@@ -13,7 +13,7 @@ class SpawnProcessesThread(Thread):
         self.bounded_semaphore = bounded_semaphore
 
     def run(self):
-        # Set connect=False because we're opening MongoClient before a fork, and want to avoid warning message.
+        # Set connect=False because we're opening MongoClient before a fork, and get a warning message otherwise.
         client = MongoClient(connect=False)
         staging_ips = client.staging_crits_data.ips
         while self.shutdown_queue.empty():
@@ -31,6 +31,9 @@ class SpawnProcessesThread(Thread):
             }
             aggregate_ip_entries = staging_ips.aggregate(pipeline, collation=collation, allowDiskUse=True)
             ids_of_entries_to_delete = []
+            # Wait for previous set of processes to finish so we don't analyze the same IP with multiple processes.
+            while not self.analyzer_processes_queue.empty():
+                continue
             for entry in aggregate_ip_entries:
                 if not self.shutdown_queue.empty():
                     break

@@ -64,8 +64,7 @@ class DataIngesterResource(CRITsAPIResource):
             return
         source = bundle.data.get('ProviderName')
         analyst = bundle.request.user.username
-        sources = user_sources(analyst)
-        if source not in sources:
+        if source not in user_sources(analyst):
             response['message'] = "Error: User not allowed to publish to source '" + str(source) + "'."
             self.crits_response(response, status=403)
             return

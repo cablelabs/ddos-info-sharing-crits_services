@@ -31,6 +31,8 @@ def save_data_to_crits(aggregate_ip_entry):
     ip_address = aggregate_ip_entry.get('_id', '')
     print "Processing data for IP '" + ip_address + "'."
     for event in aggregate_ip_entry['events']:
+        # TODO: at some point before I add event, confirm that no duplicate of this event exists, in terms of all fields
+        # in staging collection except for "timeReceived".
         analyst = event.get('analyst')
         source = event.get('source')
         time_received = event.get('timeReceived')
