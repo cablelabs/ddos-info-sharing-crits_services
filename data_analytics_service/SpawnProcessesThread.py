@@ -31,17 +31,18 @@ class SpawnProcessesThread(Thread):
             }
             aggregate_ip_entries = staging_ips.aggregate(pipeline, collation=collation, allowDiskUse=True)
             ids_of_entries_to_delete = []
-            # Wait for previous set of processes to finish so we don't analyze the same IP with multiple processes.
-            while not self.analyzer_processes_queue.empty():
-                continue
             for entry in aggregate_ip_entries:
                 if not self.shutdown_queue.empty():
-                    break
+                    return
                 self.bounded_semaphore.acquire()
                 p = Process(target=process_ip_entry, args=(entry,))
                 p.start()
                 self.analyzer_processes_queue.put(p)
                 for event in entry['events']:
                     ids_of_entries_to_delete.append(event['_id'])
-            # TODO: see if I run into race conditions, such as trying to delete before processed.
+            # Wait for previous set of processes to finish so we don't analyze the same IP with multiple processes, and
+            # so we don't delete an entry before it has been analyzed.
+            while not self.analyzer_processes_queue.empty():
+                if not self.shutdown_queue.empty():
+                    return
             staging_ips.delete_many(filter={'_id': {'$in': ids_of_entries_to_delete}})

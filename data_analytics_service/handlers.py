@@ -1,6 +1,6 @@
 import ipaddress
 import pendulum
-
+from pymongo import MongoClient
 from crits.core.crits_mongoengine import create_embedded_source
 from crits.core.handlers import add_releasability, add_releasability_instance
 from crits.core.source_access import SourceAccess
@@ -13,13 +13,14 @@ from crits.vocabulary.events import EventTypes
 from crits.vocabulary.objects import ObjectTypes
 from crits.vocabulary.relationships import RelationshipTypes
 from crits.vocabulary.status import Status
-
+from data_ingester_service.vocabulary import IngestFields
+from data_ingester_service.handlers import aggregate_event_data
 from ASNLookup.ASNLookupData import ASNLookupData
 from GeoIPLookup.GeoIPLookupData import GeoIPLookupData
 
 
 def process_ip_entry(aggregate_ip_entry):
-    # TODO: how will I handle errors in this code?
+    # TODO: figure out how to handle errors in this function
     save_data_to_crits(aggregate_ip_entry)
     ip_address = aggregate_ip_entry.get('_id', '')
     analyze_and_update_ip(ip_address)
@@ -31,78 +32,81 @@ def save_data_to_crits(aggregate_ip_entry):
     ip_address = aggregate_ip_entry.get('_id', '')
     print "Processing data for IP '" + ip_address + "'."
     for event in aggregate_ip_entry['events']:
-        # TODO: at some point before I add event, confirm that no duplicate of this event exists, in terms of all fields
-        # in staging collection except for "timeReceived".
         analyst = event.get('analyst')
-        source = event.get('source')
-        time_received = event.get('timeReceived')
-        if last_time_received is None:
-            last_time_received = time_received
+        for db_event in aggregate_event_data(username=analyst):
+            for field_name in IngestFields.api_field_names():
+                input_value = event.get(field_name)
+                db_value = db_event.get(field_name)
+                variable_type = IngestFields.api_field_to_variable_type(field_name)
+                if variable_type == 'array' and set(input_value) != set(db_value):
+                    # Array variable not equal
+                    break
+                elif input_value != db_value:
+                    # Non-array variable not equal
+                    break
+            else:
+                # All variables match, so duplicate Event exists in database.
+                break
         else:
-            last_time_received = max(last_time_received, time_received)
-        title = "IP:[" + ip_address + "],Time:[" + time_received.strftime('%Y-%m-%dT%H:%M:%S.%fZ') + "]"
-        print "Adding new Event for IP '" + ip_address + "'."
-        add_event_result = add_new_event(title=title,
-                                         description='',
-                                         event_type=EventTypes.DISTRIBUTED_DENIAL_OF_SERVICE,
-                                         source=source,
-                                         method='',
-                                         reference='',
-                                         date=time_received,
-                                         analyst=analyst
-                                         )
-        event_id = add_event_result['id']
-        event_object = Event.objects(id=event_id).first()
-        object_types_to_field_names = {
-            ObjectTypes.ATTACK_START_TIME: 'attackStartTime',
-            ObjectTypes.ATTACK_STOP_TIME: 'attackStopTime',
-            ObjectTypes.TOTAL_BYTES_SENT: 'totalBytesSent',
-            ObjectTypes.TOTAL_PACKETS_SENT: 'totalPacketsSent',
-            ObjectTypes.PEAK_BYTES_PER_SECOND: 'peakBPS',
-            ObjectTypes.PEAK_PACKETS_PER_SECOND: 'peakPPS',
-            ObjectTypes.SOURCE_PORT: 'sourcePort',
-            ObjectTypes.DEST_PORT: 'destinationPort',
-            ObjectTypes.PROTOCOL: 'protocol'
-        }
-        for object_type, field_name in object_types_to_field_names.items():
-            field_value = event.get(field_name)
-            if field_value:
-                event_object.add_object(object_type=object_type,
-                                        value=str(field_value),
-                                        source=source,
-                                        method='',
-                                        reference='',
-                                        analyst=analyst
-                                        )
-        # Add an Attack Type object for each value from input.
-        attack_types = event.get('attackTypes')
-        if attack_types:
-            for atk_type in attack_types:
-                event_object.add_object(object_type=ObjectTypes.ATTACK_TYPE,
-                                        value=atk_type,
-                                        source=source,
-                                        method='',
-                                        reference='',
-                                        analyst=analyst
-                                        )
-        event_object.save(username=analyst)
-        ip_type = ip_address_type(ip_address)
-        print "Updating IP '" + ip_address + "'."
-        update_ip_result = ip_add_update(ip_address=ip_address,
-                                         ip_type=ip_type,
-                                         source=source,
-                                         analyst=analyst,
-                                         related_id=event_id,
-                                         related_type='Event',
-                                         relationship_type=RelationshipTypes.RELATED_TO
-                                         )
+            source = event.get('source')
+            time_received = event.get('timeReceived')
+            if last_time_received is None:
+                last_time_received = time_received
+            else:
+                last_time_received = max(last_time_received, time_received)
+            title = "IP:[" + ip_address + "],Time:[" + time_received.strftime('%Y-%m-%dT%H:%M:%S.%fZ') + "]"
+            print "Adding new Event for IP '" + ip_address + "'."
+            add_event_result = add_new_event(title=title,
+                                             description='',
+                                             event_type=EventTypes.DISTRIBUTED_DENIAL_OF_SERVICE,
+                                             source=source,
+                                             method='',
+                                             reference='',
+                                             date=time_received,
+                                             analyst=analyst
+                                             )
+            event_id = add_event_result['id']
+            event_object = Event.objects(id=event_id).first()
+            for field_name, field_value in event.iteritems():
+                try:
+                    object_type = IngestFields.to_object_type(field_name)
+                    variable_type = IngestFields.api_field_to_variable_type(field_name)
+                except ValueError:
+                    continue
+                if variable_type == 'array':
+                    for item in field_value:
+                        event_object.add_object(object_type=object_type,
+                                                value=item,
+                                                source=source,
+                                                method='',
+                                                reference='',
+                                                analyst=analyst
+                                                )
+                else:
+                    event_object.add_object(object_type=object_type,
+                                            value=str(field_value),
+                                            source=source,
+                                            method='',
+                                            reference='',
+                                            analyst=analyst
+                                            )
+            event_object.save(username=analyst)
+            ip_type = ip_address_type(ip_address)
+            print "Updating IP '" + ip_address + "'."
+            update_ip_result = ip_add_update(ip_address=ip_address,
+                                             ip_type=ip_type,
+                                             source=source,
+                                             analyst=analyst,
+                                             related_id=event_id,
+                                             related_type='Event',
+                                             relationship_type=RelationshipTypes.RELATED_TO
+                                             )
     update_ip_object_additional_fields(ip_address, last_time_received)
 
 
 def ip_address_type(ip):
     """
     Return a string representing the version of the input IP address, to be used when adding/updating IP object.
-
     :param ip: The IP address to analyze.
     :type ip: str
     :return: str, either 'IPv4 Address' or 'IPv6 Address'
@@ -119,32 +123,31 @@ def ip_address_type(ip):
 
 
 def update_ip_object_additional_fields(ip_address, last_time_received=None):
-    ip_object = IP.objects(ip=ip_address).first()
     is_last_time_received_present = False
     is_number_of_times_seen_present = False
     if last_time_received is None:
         last_time_received = pendulum.now('UTC')
-    last_time_received_str = last_time_received.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+    ip_object = IP.objects(ip=ip_address).first()
+    number_of_times_seen_str = str(len(ip_object.relationships))
     for o in ip_object.obj:
         if o.object_type == ObjectTypes.LAST_TIME_RECEIVED:
+            previous_value = o.value
+            previous_value_datetime = pendulum.strptime(previous_value, '%Y-%m-%dT%H:%M:%S.%fZ')
+            last_time_received = max(previous_value_datetime, last_time_received)
+            last_time_received_str = last_time_received.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
             o.value = last_time_received_str
             is_last_time_received_present = True
         elif o.object_type == ObjectTypes.NUMBER_OF_TIMES_SEEN:
-            # Increment number of times seen
-            try:
-                int_value = int(o.value)
-                int_value += 1
-                o.value = str(int_value)
-            except (TypeError, ValueError):
-                pass
+            o.value = number_of_times_seen_str
             is_number_of_times_seen_present = True
     # Create new sub-objects for types that were not present.
     autofill_analyst = 'analysis_autofill'
     autofill_source = get_user_organization(autofill_analyst)
     if not is_last_time_received_present:
+        last_time_received_str = last_time_received.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
         ip_object.add_object(ObjectTypes.LAST_TIME_RECEIVED, last_time_received_str, autofill_source, '', '', autofill_analyst)
     if not is_number_of_times_seen_present:
-        ip_object.add_object(ObjectTypes.NUMBER_OF_TIMES_SEEN, '1', autofill_source, '', '', autofill_analyst)
+        ip_object.add_object(ObjectTypes.NUMBER_OF_TIMES_SEEN, number_of_times_seen_str, autofill_source, '', '', autofill_analyst)
     ip_object.set_status(Status.IN_PROGRESS)
     ip_object.save(username=autofill_analyst)
 
@@ -152,7 +155,6 @@ def update_ip_object_additional_fields(ip_address, last_time_received=None):
 def analyze_and_update_ip(ip_address):
     """
     Analyze the input IP address' object, and update it based on lookup information.
-
     :param ip_address: The IP address of the object to update.
     :type ip_address: str
     :return: (nothing)
@@ -169,11 +171,9 @@ def analyze_and_update_ip(ip_address):
     return
 
 
-# TODO: compare performance of these steps to version where I use aggregate on events collection, or aggregate on a single IP object using lookup stage
 def update_event_aggregate_fields(ip_object):
     """
     Update fields that are the result of aggregating data from multiple events.
-
     :param ip_object: The IP object to update.
     :type ip_object: IP
     :return: (nothing)
@@ -217,7 +217,6 @@ def update_event_aggregate_fields(ip_object):
 def update_asn_information(ip_object):
     """
     Update all ASN information for the input IP object.
-
     :param ip_object: The IP object whose ASN information we're updating.
     :type ip_object: IP
     :return: str, representing AS Number (which is used in next step of updating IP)
@@ -236,7 +235,6 @@ def add_owning_source_to_ip(ip_object, as_number):
     """
     Add the source associated with the input AS Number to the IP object's list of sources, if the source exists and is
     not already associated with the IP.
-
     :param ip_object: The IP object whose sources may be updated.
     :type ip_object: IP
     :param as_number: The AS Number that should be associated with the source we may add.
@@ -265,16 +263,14 @@ def add_owning_source_to_ip(ip_object, as_number):
     return
 
 
-# TODO: compare performance to list comprehension and map() function.
 def update_reporter_fields(ip_object):
     """
     Update fields related to the reporters of the IP, including the number of reporters, and the name of all reporters.
-
     :param ip_object: The IP object to update.
     :type ip_object: IP
     :return: (nothing)
     """
-    # First, remove all previous "Reported By" sub-objects.
+    # Step 1: Remove all previous "Reported By" sub-objects.
     # To prevent skipping objects while iterating through sub-objects, store list of objects to remove later.
     previous_object_values = []
     for o in ip_object.obj:
@@ -282,17 +278,17 @@ def update_reporter_fields(ip_object):
             previous_object_values.append(o.value)
     for previous_value in previous_object_values:
         ip_object.remove_object(ObjectTypes.REPORTED_BY, previous_value)
-    # Second, determine which sources are reporters by excluding those that have a releasability.
-    # Obtain latest copy of IP object so the new releasability, if any, is accounted for.
+    # Step 2: Determine which sources are reporters by finding all Events reported for the IP.
+    # Note: This is not calculated from IP's sources because those are not removed when Events are removed.
     source_names = []
-    for src in ip_object['source']:
-        for instance in src['instances']:
-            if instance['analyst'] != 'analysis_autofill':
-                source_name = src['name']
-                if source_name not in source_names:
-                    source_names.append(source_name)
-                break
-    # Finally, update the appropriate sub-objects in the IP object.
+    for relationship in ip_object.relationships:
+        if relationship.rel_type == 'Event':
+            event_id = relationship.object_id
+            event_object = Event.objects(id=event_id).first()
+            for src in event_object['source']:
+                if src.name not in source_names:
+                    source_names.append(src.name)
+    # Step 3: Update the appropriate sub-objects in the IP object.
     autofill_analyst = 'analysis_autofill'
     for reporter in source_names:
         # Don't use my wrapper function to update sub-object, because the goal is to save each reporter name.
@@ -304,7 +300,6 @@ def update_reporter_fields(ip_object):
 def update_geoip_information(ip_object):
     """
     Set the City, State, Country, Latitude, and Longitude of the input IP object.
-
     :param ip_object: The IP object to update.
     :type ip_object: IP
     :return: (nothing)
@@ -326,7 +321,6 @@ def update_geoip_information(ip_object):
 def update_ip_object_sub_object(ip_object, sub_object_type, sub_object_value):
     """
     For the input IP object, set the sub-object of the input type to the input value, removing all previous values.
-
     :param ip_object: The IP object to update.
     :type ip_object: IP
     :param sub_object_type: The type of the sub-object to update.

@@ -1,14 +1,8 @@
-import json
 import pendulum
 from pymongo import MongoClient
-from jsonschema import validate, FormatChecker, ValidationError
-from tastypie import authorization
-from tastypie.authentication import MultiAuthentication
-
-from crits.core.user_tools import get_user_organization, user_sources
+from crits.core.user_tools import user_sources
 from crits.events.event import Event
-
-from vocabulary import IPOutputFields, EventOutputFields
+from vocabulary import IngestFields
 
 
 def save_ingest_data(analyst, source, ingest_data_entries):
@@ -43,9 +37,12 @@ def aggregate_event_data(username=None, limit=None):
     :type limit: int
     :return: pymongo.Cursor
     """
-    # TODO: check return type
     aggregation_pipeline = []
+    if limit is not None and not isinstance(limit, int):
+        raise TypeError("limit must be an integer.")
     if username is not None:
+        if not isinstance(username, basestring):
+            raise TypeError("username must be a string.")
         sources = user_sources(username)
         match_user_source_stage = {'$match': {'source.name': {'$in': sources}}}
         aggregation_pipeline.append(match_user_source_stage)
@@ -63,30 +60,34 @@ def aggregate_event_data(username=None, limit=None):
         }
     }
     unwind_ip_field_stage = {'$unwind': '$' + IP_FIELD}
-    attack_type_sub_object_type = EventOutputFields.get_object_type_from_field_name(EventOutputFields.ATTACK_TYPES)
     project_event_object_fields_stage = {
         '$project': {
             '_id': 0,
-            IPOutputFields.IP_ADDRESS: '$' + IP_FIELD + '.ip',
-            EventOutputFields.ATTACK_TYPES: {
+            IngestFields.IP_ADDRESS: '$' + IP_FIELD + '.ip'
+        }
+    }
+    for field_name in IngestFields.api_field_names():
+        try:
+            object_type = IngestFields.to_object_type(field_name)
+            variable_type = IngestFields.api_field_to_variable_type(field_name)
+        except ValueError:
+            continue
+        if variable_type == 'array':
+            project_event_object_fields_stage['$project'][field_name] = {
                 '$map': {
                     'input': {
                         '$filter': {
                             'input': '$objects',
                             'as': 'obj',
-                            'cond': {'$eq': ['$$obj.type', attack_type_sub_object_type]}
+                            'cond': {'$eq': ['$$obj.type', object_type]}
                         }
                     },
                     'as': 'reporter_obj',
                     'in': '$$reporter_obj.value'
                 }
             }
-        }
-    }
-    for event_output_field in EventOutputFields.SUB_OBJECT_FIELDS:
-        if event_output_field != EventOutputFields.ATTACK_TYPES:
-            sub_object_type = EventOutputFields.get_object_type_from_field_name(event_output_field)
-            project_event_object_fields_stage['$project'][event_output_field] = {
+        else:
+            project_event_object_fields_stage['$project'][field_name] = {
                 '$let': {
                     'vars': {
                         'one_obj': {
@@ -95,7 +96,7 @@ def aggregate_event_data(username=None, limit=None):
                                     '$filter': {
                                         'input': '$objects',
                                         'as': 'obj',
-                                        'cond': {'$eq': ['$$obj.type', sub_object_type]}
+                                        'cond': {'$eq': ['$$obj.type', object_type]}
                                     }
                                 },
                                 0
@@ -110,8 +111,15 @@ def aggregate_event_data(username=None, limit=None):
         unwind_relationships_stage,
         lookup_ips_stage,
         unwind_ip_field_stage,
-        project_event_object_fields_stage,
+        project_event_object_fields_stage
     ])
     if limit is not None:
         limit_stage = {'$limit': limit}
         aggregation_pipeline.append(limit_stage)
+    collation = {
+        'locale': 'en_US_POSIX',
+        'numericOrdering': True
+    }
+    result = Event.objects.aggregate(*aggregation_pipeline, allowDiskUse=True, collation=collation, useCursor=False)
+    # TODO: check return type
+    return result

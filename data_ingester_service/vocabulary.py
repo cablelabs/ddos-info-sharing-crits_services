@@ -1,96 +1,11 @@
 from crits.vocabulary.objects import ObjectTypes
 
-class IPOutputFields:
+
+class IngestFields:
     """
-    This class defines the strings used for the names of fields returned by the distribution service at the top-level of
-    an IP object.
+    This class defines strings representing fields used in the data ingester service.
     """
     IP_ADDRESS = 'IPaddress'
-    LAST_TIME_RECEIVED = 'lastTimeReceived'
-    NUMBER_OF_TIMES_SEEN = 'numberOfTimesSeen'
-    NUMBER_OF_REPORTERS = 'numberOfReporters'
-    REPORTED_BY = 'reportedBy'
-    CITY = 'City'
-    STATE = 'State'
-    COUNTRY = 'Country'
-    LATITUDE = 'Latitude'
-    LONGITUDE = 'Longitude'
-    TOTAL_BYTES_SENT = 'totalBytesSent'
-    TOTAL_PACKETS_SENT = 'totalPacketsSent'
-    EVENTS = 'events'
-    ALL_FIELDS = [
-        IP_ADDRESS,
-        LAST_TIME_RECEIVED,
-        NUMBER_OF_TIMES_SEEN,
-        NUMBER_OF_REPORTERS,
-        REPORTED_BY,
-        CITY,
-        STATE,
-        COUNTRY,
-        LATITUDE,
-        LONGITUDE,
-        TOTAL_BYTES_SENT,
-        TOTAL_PACKETS_SENT,
-        EVENTS
-    ]
-    # Fields whose values are found in sub-objects of the IP.
-    SUB_OBJECT_FIELDS = [
-        LAST_TIME_RECEIVED,
-        NUMBER_OF_TIMES_SEEN,
-        NUMBER_OF_REPORTERS,
-        REPORTED_BY,
-        CITY,
-        STATE,
-        COUNTRY,
-        LATITUDE,
-        LONGITUDE,
-        TOTAL_BYTES_SENT,
-        TOTAL_PACKETS_SENT
-    ]
-    # Maps each sub-object field to the 'type' of the sub-object that contains the 'value' for that field.
-    SUB_OBJECT_FIELDS_TO_OBJECT_TYPES = {
-        LAST_TIME_RECEIVED: ObjectTypes.LAST_TIME_RECEIVED,
-        NUMBER_OF_TIMES_SEEN: ObjectTypes.NUMBER_OF_TIMES_SEEN,
-        NUMBER_OF_REPORTERS: ObjectTypes.NUMBER_OF_REPORTERS,
-        REPORTED_BY: ObjectTypes.REPORTED_BY,
-        CITY: ObjectTypes.CITY,
-        STATE: ObjectTypes.STATE,
-        COUNTRY: ObjectTypes.COUNTRY,
-        LATITUDE: ObjectTypes.LATITUDE,
-        LONGITUDE: ObjectTypes.LONGITUDE,
-        TOTAL_BYTES_SENT: ObjectTypes.TOTAL_BYTES_SENT,
-        TOTAL_PACKETS_SENT: ObjectTypes.TOTAL_PACKETS_SENT
-    }
-    # Fields whose type is integer.
-    INTEGER_FIELDS = [
-        NUMBER_OF_TIMES_SEEN,
-        NUMBER_OF_REPORTERS,
-        TOTAL_BYTES_SENT,
-        TOTAL_PACKETS_SENT
-    ]
-    # Fields whose type is float.
-    FLOAT_FIELDS = [
-        LATITUDE,
-        LONGITUDE
-    ]
-
-    @classmethod
-    def get_object_type_from_field_name(cls, field_name):
-        """
-        Returns the "type" of the object in an IP document's "objects" field whose "value" we would use for the field
-        whose name is the input name.
-        
-        :param field_name: The name of the field whose type we are returning.
-        :type field_name: str
-        :return: str
-        :raise ValueError: field_name is not a field returned by the distribution service at the top-level of an IP
-        """
-        if field_name not in cls.SUB_OBJECT_FIELDS_TO_OBJECT_TYPES:
-            raise ValueError("'" + field_name + "' is not a sub-object field for IP objects.")
-        return cls.SUB_OBJECT_FIELDS_TO_OBJECT_TYPES[field_name]
-
-
-class EventOutputFields:
     ATTACK_START_TIME = 'attackStartTime'
     ATTACK_STOP_TIME = 'attackStopTime'
     TIME_RECORDED = 'timeRecorded'
@@ -102,34 +17,8 @@ class EventOutputFields:
     SOURCE_PORT = 'sourcePort'
     DESTINATION_PORT = 'destinationPort'
     PROTOCOL = 'protocol'
-    ALL_EVENT_FIELDS = [
-        ATTACK_START_TIME,
-        ATTACK_STOP_TIME,
-        TIME_RECORDED,
-        ATTACK_TYPES,
-        TOTAL_BYTES_SENT,
-        TOTAL_PACKETS_SENT,
-        PEAK_BYTES_PER_SECOND,
-        PEAK_PACKETS_PER_SECOND,
-        SOURCE_PORT,
-        DESTINATION_PORT,
-        PROTOCOL
-    ]
-    # Fields whose values are found in sub-objects of the Event.
-    SUB_OBJECT_FIELDS = [
-        ATTACK_START_TIME,
-        ATTACK_STOP_TIME,
-        ATTACK_TYPES,
-        TOTAL_BYTES_SENT,
-        TOTAL_PACKETS_SENT,
-        PEAK_BYTES_PER_SECOND,
-        PEAK_PACKETS_PER_SECOND,
-        SOURCE_PORT,
-        DESTINATION_PORT,
-        PROTOCOL
-    ]
     # Maps each sub-object field to the 'type' of the sub-object that contains the 'value' for that field.
-    SUB_OBJECT_FIELDS_TO_OBJECT_TYPES = {
+    API_FIELDS_TO_OBJECT_TYPES = {
         ATTACK_START_TIME: ObjectTypes.ATTACK_START_TIME,
         ATTACK_STOP_TIME: ObjectTypes.ATTACK_STOP_TIME,
         ATTACK_TYPES: ObjectTypes.ATTACK_TYPE,
@@ -141,26 +30,65 @@ class EventOutputFields:
         DESTINATION_PORT: ObjectTypes.DEST_PORT,
         PROTOCOL: ObjectTypes.PROTOCOL
     }
-    INTEGER_FIELDS = [
-        TOTAL_BYTES_SENT,
-        TOTAL_PACKETS_SENT,
-        PEAK_BYTES_PER_SECOND,
-        PEAK_PACKETS_PER_SECOND,
-        SOURCE_PORT,
-        DESTINATION_PORT
-    ]
+    API_FIELDS_TO_VARIABLE_TYPES = {
+        IP_ADDRESS: 'string',
+        ATTACK_START_TIME: 'string',
+        ATTACK_STOP_TIME: 'string',
+        ATTACK_TYPES: 'array',
+        TOTAL_BYTES_SENT: 'int',
+        TOTAL_PACKETS_SENT: 'int',
+        PEAK_BYTES_PER_SECOND: 'int',
+        PEAK_PACKETS_PER_SECOND: 'int',
+        SOURCE_PORT: 'int',
+        DESTINATION_PORT: 'int',
+        PROTOCOL: 'string'
+    }
 
     @classmethod
-    def get_object_type_from_field_name(cls, field_name):
+    def api_field_names(cls):
         """
-        Returns the "type" of the object in an Event document's "objects" field whose "value" we would use for the field
-        whose name is the input name.
+        Return all fields in the ingest service that are tied to an object of some Event.
+        :return: list of strings
+        """
+        return cls.API_FIELDS_TO_VARIABLE_TYPES.keys()
 
-        :param field_name: The name of the field whose type we are returning.
-        :type field_name: str
-        :return: str
-        :raise ValueError: field_name is not a field returned by the distribution service at the top-level of an Event
+    @classmethod
+    def to_object_type(cls, api_field_name):
         """
-        if field_name not in cls.SUB_OBJECT_FIELDS_TO_OBJECT_TYPES:
-            raise ValueError("'" + field_name + "' is not a sub-object field for Event objects.")
-        return cls.SUB_OBJECT_FIELDS_TO_OBJECT_TYPES[field_name]
+        Returns the "type" of object in an Event's "objects" field whose "value" is the value of the given API field.
+        :param api_field_name: The name of the field whose "type" we are returning.
+        :type api_field_name: str
+        :return: str
+        :raise ValueError: api_field_name is not the name of a field used for Events in the API of the ingest or
+        distribution service.
+        """
+        if api_field_name not in cls.API_FIELDS_TO_OBJECT_TYPES:
+            raise ValueError("'" + api_field_name + "' is not the name of a field corresponding to an object type.")
+        return cls.API_FIELDS_TO_OBJECT_TYPES[api_field_name]
+
+    @classmethod
+    def to_api_field_name(cls, object_type):
+        """
+        Returns the name of the API field whose value is taken from the "value" of the object in an Event's "objects"
+        with the "type" specified in the parameter.
+        :param object_type: The type of the object to find the API field name for.
+        :type object_type: str
+        :return: str
+        :raise ValueError: object_type is not a type whose value is used in the API of the ingest or distribution
+        service.
+        """
+        for api_field_name in cls.API_FIELDS_TO_OBJECT_TYPES:
+            if cls.API_FIELDS_TO_OBJECT_TYPES[api_field_name] == object_type:
+                return api_field_name
+        raise ValueError("'" + object_type + "' is not the type of an object corresponding to a field in the service APIs.")
+
+    @classmethod
+    def api_field_to_variable_type(cls, api_field_name):
+        if api_field_name not in cls.API_FIELDS_TO_VARIABLE_TYPES:
+            raise ValueError("'" + api_field_name + "' is not the name of a field in the service APIs.")
+        return cls.API_FIELDS_TO_VARIABLE_TYPES[api_field_name]
+
+    @classmethod
+    def object_type_to_variable_type(cls, object_type):
+        api_field_name = cls.to_api_field_name(object_type)
+        return cls.api_field_to_variable_type(api_field_name)
