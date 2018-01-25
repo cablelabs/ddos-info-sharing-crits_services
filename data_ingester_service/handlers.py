@@ -39,10 +39,10 @@ def aggregate_event_data(username=None, limit=None):
     """
     aggregation_pipeline = []
     if limit is not None and not isinstance(limit, int):
-        raise TypeError("limit must be an integer.")
+        raise TypeError("'limit' must be an integer.")
     if username is not None:
         if not isinstance(username, basestring):
-            raise TypeError("username must be a string.")
+            raise TypeError("'username' must be a string.")
         sources = user_sources(username)
         match_user_source_stage = {'$match': {'source.name': {'$in': sources}}}
         aggregation_pipeline.append(match_user_source_stage)
@@ -121,5 +121,4 @@ def aggregate_event_data(username=None, limit=None):
         'numericOrdering': True
     }
     result = Event.objects.aggregate(*aggregation_pipeline, allowDiskUse=True, collation=collation, useCursor=False)
-    # TODO: check return type
     return result

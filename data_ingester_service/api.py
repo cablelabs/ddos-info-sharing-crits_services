@@ -104,17 +104,14 @@ class DataIngesterResource(CRITsAPIResource):
         :return:
         """
         bundle.data = bundle.obj
-        # Convert appropriate fields of events to integers.
+        # Convert appropriate fields of Events to integers.
         for field_name in bundle.data:
             try:
                 variable_type = IngestFields.api_field_to_variable_type(field_name)
-            except ValueError:
-                continue
-            if variable_type == 'int':
-                try:
+                if variable_type == 'int':
                     bundle.data[field_name] = int(bundle.data[field_name])
-                except (TypeError, ValueError):
-                    pass
+            except (TypeError, ValueError):
+                continue
         return bundle
 
     def alter_list_data_to_serialize(self, request, data):

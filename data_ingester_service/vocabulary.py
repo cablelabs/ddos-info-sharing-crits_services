@@ -59,8 +59,8 @@ class IngestFields:
         :param api_field_name: The name of the field whose "type" we are returning.
         :type api_field_name: str
         :return: str
-        :raise ValueError: api_field_name is not the name of a field used for Events in the API of the ingest or
-        distribution service.
+        :raise ValueError: api_field_name is not the name of a field in the ingest service that corresponds to an object
+        type.
         """
         if api_field_name not in cls.API_FIELDS_TO_OBJECT_TYPES:
             raise ValueError("'" + api_field_name + "' is not the name of a field corresponding to an object type.")
@@ -74,8 +74,7 @@ class IngestFields:
         :param object_type: The type of the object to find the API field name for.
         :type object_type: str
         :return: str
-        :raise ValueError: object_type is not a type whose value is used in the API of the ingest or distribution
-        service.
+        :raise ValueError: object_type is not a type of an object that corresponds to some field in the ingest service.
         """
         for api_field_name in cls.API_FIELDS_TO_OBJECT_TYPES:
             if cls.API_FIELDS_TO_OBJECT_TYPES[api_field_name] == object_type:
