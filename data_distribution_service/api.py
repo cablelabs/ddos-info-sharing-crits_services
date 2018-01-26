@@ -36,11 +36,25 @@ class DataDistributionResource(CRITsAPIResource):
             # Request is likely contained in kwargs, not in request parameter.
             actual_request = kwargs['bundle'].request
         username = actual_request.GET.get('username', '')
-        limit = actual_request.GET.get('limit', '20')
-        try:
-            limit = int(limit)
-        except (TypeError, ValueError):
-            raise ValueError("'limit' parameter not an integer value.")
+        limit = actual_request.GET.get('limit', self.Meta.limit)
+        if not isinstance(limit, int):
+            try:
+                limit = int(limit)
+            except (TypeError, ValueError):
+                response = {
+                    'message': "'limit' parameter not an integer value.",
+                    'return_code': 1
+                }
+                self.crits_response(response)
+        if limit < 0:
+            response = {
+                'message': "'limit' parameter must be non-negative integer.",
+                'return_code': 1
+            }
+            self.crits_response(response)
+        # Limit of 0 in tastypie API returns unlimited number of results, so let aggregation return unlimited results.
+        if limit == 0:
+            limit = None
         modified_since = actual_request.GET.get('modifiedSince', None)
         sort_by = actual_request.GET.get('sortBy', None)
         sort_order = actual_request.GET.get('sortOrder', 'desc')
@@ -74,18 +88,12 @@ class DataDistributionResource(CRITsAPIResource):
                 continue
             try:
                 variable_type = DistributionFields.api_field_to_variable_type(field_name)
-            except ValueError:
-                continue
-            if variable_type == 'int':
-                try:
+                if variable_type == 'int':
                     bundle.data[field_name] = int(bundle.data[field_name])
-                except (TypeError, ValueError):
-                    pass
-            elif variable_type == 'float':
-                try:
+                elif variable_type == 'float':
                     bundle.data[field_name] = float(bundle.data[field_name])
-                except (TypeError, ValueError):
-                    pass
+            except (TypeError, ValueError):
+                continue
         for field in fields_to_remove:
             del bundle.data[field]
         EVENTS = DistributionFields.EVENTS

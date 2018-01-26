@@ -5,12 +5,12 @@ from crits.ips.ip import IP
 from vocabulary import DistributionFields
 
 
-def collect_ip_data(username=None, limit=20, modified_since=None,
+def collect_ip_data(username=None, limit=None, modified_since=None,
                     sort_by=None, sort_descending=True, min_number_of_reporters=1):
     # Check parameters before setting up aggregation query.
     if username is not None and not isinstance(username, basestring):
         raise TypeError("'username' must be a string.")
-    if not isinstance(limit, int):
+    if limit is not None and not isinstance(limit, int):
         raise TypeError("'limit' must be an integer.")
     modified_since_datetime = None
     if modified_since is not None:
@@ -185,8 +185,9 @@ def collect_ip_data(username=None, limit=20, modified_since=None,
         sort_order_number = -1 if sort_descending else 1
         sort_stage = {'$sort': {sort_by: sort_order_number}}
         aggregation_pipeline.append(sort_stage)
-    limit_stage = {'$limit': limit}
-    aggregation_pipeline.append(limit_stage)
+    if limit is not None:
+        limit_stage = {'$limit': limit}
+        aggregation_pipeline.append(limit_stage)
     collation = {
         'locale': 'en_US_POSIX',
         'numericOrdering': True

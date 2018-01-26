@@ -8,7 +8,6 @@ from vocabulary import IngestFields
 def save_ingest_data(analyst, source, ingest_data_entries):
     """
     Saves multiple IP objects to temporary database using the ingest data.
-
     :param analyst: The analyst who sent the POST message for the IP objects.
     :type analyst: str
     :param source: The source of the POST message for the IP objects.

@@ -52,24 +52,20 @@ class DataIngesterResource(CRITsAPIResource):
         except ValidationError as e:
             response['message'] = "Validation Error: " + e.message
             self.crits_response(response, status=400)
-            return
         except Exception as e:
             response['message'] = "Error during schema validation: " + e.message
             self.crits_response(response, status=500)
-            return
         source = bundle.data.get('ProviderName')
         analyst = bundle.request.user.username
         if source not in user_sources(analyst):
             response['message'] = "Error: User not allowed to publish to source '" + str(source) + "'."
             self.crits_response(response, status=403)
-            return
         try:
             ingest_data_entries = bundle.data.get('ingestData', None)
             save_ingest_data(analyst, source, ingest_data_entries)
         except Exception as e:
             response['message'] = 'Error saving IP data: ' + e.message
             self.crits_response(response, status=500)
-            return
         response['message'] = 'All data has been saved!'
         response['return_code'] = 0
         self.crits_response(response)
@@ -86,13 +82,25 @@ class DataIngesterResource(CRITsAPIResource):
             # Request is likely contained in kwargs, not in request parameter.
             actual_request = kwargs['bundle'].request
         username = actual_request.GET.get('username', '')
-        if username == '':
-            raise Exception("'username' parameter must be specified.")
-        limit = actual_request.GET.get('limit', '20')
-        try:
-            limit = int(limit)
-        except (TypeError, ValueError):
-            raise TypeError("'limit' parameter not an integer value.")
+        limit = actual_request.GET.get('limit', self.Meta.limit)
+        if not isinstance(limit, int):
+            try:
+                limit = int(limit)
+            except (TypeError, ValueError):
+                response = {
+                    'message': "'limit' parameter not an integer value.",
+                    'return_code': 1
+                }
+                self.crits_response(response)
+        if limit < 0:
+            response = {
+                'message': "'limit' parameter must be non-negative integer.",
+                'return_code': 1
+            }
+            self.crits_response(response)
+        # Limit of 0 in tastypie API returns unlimited number of results, so let aggregation return unlimited results.
+        if limit == 0:
+            limit = None
         result = aggregate_event_data(username, limit)
         objects = list(result)
         return objects
