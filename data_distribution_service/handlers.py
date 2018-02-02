@@ -89,7 +89,7 @@ def collect_ip_data(username=None, limit=None, modified_since=None,
         # TODO: Confirm that string comparison is acceptable. Otherwise, manually filter after aggregation.
         match_ip_received_stage = {'$match': {DistributionFields.LAST_TIME_RECEIVED: {'$gte': modified_since}}}
         aggregation_pipeline.append(match_ip_received_stage)
-    match_min_number_of_reporters_stage = {'$match': {DistributionFields.NUMBER_OF_REPORTERS: {'$gt': str(min_number_of_reporters)}}}
+    match_min_number_of_reporters_stage = {'$match': {DistributionFields.NUMBER_OF_REPORTERS: {'$gte': str(min_number_of_reporters)}}}
     unwind_relationships_stage = {'$unwind': '$relationships'}
     EVENT_FIELD = 'event'
     lookup_events_stage = {
