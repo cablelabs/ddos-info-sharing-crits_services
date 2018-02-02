@@ -1,5 +1,6 @@
 import json
 from jsonschema import validate, FormatChecker, ValidationError
+from multiprocessing import Process
 from tastypie import authorization
 from tastypie.authentication import MultiAuthentication
 from crits.core.api import CRITsApiKeyAuthentication, CRITsSessionAuthentication
@@ -62,7 +63,8 @@ class DataIngesterResource(CRITsAPIResource):
             self.crits_response(response, status=403)
         try:
             ingest_data_entries = bundle.data.get('ingestData', None)
-            save_ingest_data(analyst, source, ingest_data_entries)
+            p = Process(target=save_ingest_data, args=(analyst, source, ingest_data_entries,))
+            p.start()
         except Exception as e:
             response['message'] = 'Error saving IP data: ' + e.message
             self.crits_response(response, status=500)

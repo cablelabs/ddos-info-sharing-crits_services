@@ -15,14 +15,16 @@ password = "Let me in you knuckle head!"
 
 # config_json_file = open('config.json')
 # config_json = json.load(config_json_file)
-max_number_of_processes = 10 #config_json['max_number_of_processes']
+# max_number_of_processes = config_json['max_number_of_processes']
+max_number_of_processes = 10
 
 # If shutdown_queue is not empty, then it's time for the sub-threads to exit.
 shutdown_queue = Queue.Queue(1)
-analyzer_processes_queue = Queue.Queue(max_number_of_processes)
+analytics_processes_queue = Queue.Queue(max_number_of_processes)
+remover_to_spawner_queue = Queue.Queue()
 bounded_semaphore = BoundedSemaphore(max_number_of_processes)
-spawner_thread = SpawnProcessesThread(shutdown_queue, analyzer_processes_queue, bounded_semaphore)
-remover_thread = RemoveCompletedProcessesThread(shutdown_queue, analyzer_processes_queue, bounded_semaphore)
+spawner_thread = SpawnProcessesThread(shutdown_queue, analytics_processes_queue, remover_to_spawner_queue, bounded_semaphore)
+remover_thread = RemoveCompletedProcessesThread(shutdown_queue, analytics_processes_queue, remover_to_spawner_queue, bounded_semaphore)
 
 spawner_thread.start()
 remover_thread.start()

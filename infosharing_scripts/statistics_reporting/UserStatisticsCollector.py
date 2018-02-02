@@ -64,3 +64,37 @@ class UserStatisticsCollector(StatisticsCollector):
             output_counts['ips'] = aggregate_count['numberOfIPs']
             output_counts['events'] = aggregate_count['numberOfEvents']
         return output_counts
+
+    def count_excluded_events(self, username, duration_start, duration_end):
+        """
+        Count the number of Events that were submitted within the timeframe of the input duration, but were not saved to
+        the database for one reason or another.
+        :param username: The name of the user whose submissions we are counting.
+        :type username: string
+        :param duration_start: The date such that all submissions considered were submitted no earlier than this date.
+        :type duration_start: a Pendulum object
+        :param duration_end: The date such that all submissions considered were submitted no later than this date.
+        :type duration_end: a Pendulum object
+        :return: int
+        """
+        pipeline = [
+            {
+                '$match': {
+                    'reporter': username,
+                    'timeReceived': {
+                        '$gte': duration_start,
+                        '$lte': duration_end
+                    }
+                }
+            },
+            {'$count': "number_of_events"}
+        ]
+        collation = {
+            'locale': 'en_US_POSIX',
+            'numericOrdering': True
+        }
+        aggregate_count = self.staging_bad_events.aggregate(pipeline=pipeline, collation=collation, allowDiskUse=True)
+        for count in aggregate_count:
+            # Since final stage of aggregation was $count, there should only be one value to return.
+            return count['number_of_events']
+        return 0

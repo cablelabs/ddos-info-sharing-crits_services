@@ -8,7 +8,6 @@ class IngestFields:
     IP_ADDRESS = 'IPaddress'
     ATTACK_START_TIME = 'attackStartTime'
     ATTACK_STOP_TIME = 'attackStopTime'
-    TIME_RECORDED = 'timeRecorded'
     ATTACK_TYPES = 'attackTypes'
     TOTAL_BYTES_SENT = 'totalBytesSent'
     TOTAL_PACKETS_SENT = 'totalPacketsSent'

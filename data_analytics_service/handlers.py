@@ -28,43 +28,72 @@ def process_ip_entry(aggregate_ip_entry):
 
 
 def save_data_to_crits(aggregate_ip_entry):
+    # TODO: Try to determine more specifically where steps may have terminated, not just checking for duplicate event.
     last_time_received = None
     ip_address = aggregate_ip_entry.get('_id', '')
     print "Processing data for IP '" + ip_address + "'."
+    client = MongoClient()
+    staging_new_events = client.staging_crits_data.new_events
+    staging_bad_events = client.staging_crits_data.bad_events
     for event in aggregate_ip_entry['events']:
         analyst = event.get('analyst')
+        time_received = event.get('timeReceived')
+        # Look for potential duplicate Event in current database.
         for db_event in aggregate_event_data(username=analyst):
             for field_name in IngestFields.api_field_names():
                 input_value = event.get(field_name)
                 db_value = db_event.get(field_name)
                 variable_type = IngestFields.api_field_to_variable_type(field_name)
-                if variable_type == 'array' and set(input_value) != set(db_value):
-                    # Array variable not equal
-                    break
+                # Break loop if saved value not equal to input.
+                if variable_type == 'array':
+                    if set(input_value) != set(db_value):
+                        break
+                elif variable_type == 'int':
+                    try:
+                        if input_value != int(db_value):
+                            break
+                    except (TypeError, ValueError):
+                        continue
                 elif input_value != db_value:
-                    # Non-array variable not equal
                     break
             else:
                 # All variables match, so duplicate Event exists in database.
+                bad_event = {
+                    'reporter': analyst,
+                    'timeReceived': time_received,
+                    'reason': 'duplicate'
+                }
+                #if staging_bad_events.count(filter=bad_event) < 1:
+                staging_bad_events.insert_one(bad_event)
+                staging_new_events.delete_one(filter={'_id': event.get('_id')})
                 break
         else:
             source = event.get('source')
-            time_received = event.get('timeReceived')
+            try:
+                title = "IP:[" + ip_address + "],Time:[" + time_received.strftime('%Y-%m-%dT%H:%M:%S.%fZ') + "]"
+                print "Adding new Event for IP '" + ip_address + "'."
+                add_event_result = add_new_event(title=title,
+                                                 description='',
+                                                 event_type=EventTypes.DISTRIBUTED_DENIAL_OF_SERVICE,
+                                                 source=source,
+                                                 method='',
+                                                 reference='',
+                                                 date=time_received,
+                                                 analyst=analyst
+                                                 )
+            except Exception:
+                bad_event = {
+                    'reporter': analyst,
+                    'timeReceived': time_received,
+                    'reason': 'Exception when adding Event.'
+                }
+                #if staging_bad_events.count(filter=bad_event) < 1:
+                staging_bad_events.insert_one(bad_event)
+                break
             if last_time_received is None:
                 last_time_received = time_received
             else:
                 last_time_received = max(last_time_received, time_received)
-            title = "IP:[" + ip_address + "],Time:[" + time_received.strftime('%Y-%m-%dT%H:%M:%S.%fZ') + "]"
-            print "Adding new Event for IP '" + ip_address + "'."
-            add_event_result = add_new_event(title=title,
-                                             description='',
-                                             event_type=EventTypes.DISTRIBUTED_DENIAL_OF_SERVICE,
-                                             source=source,
-                                             method='',
-                                             reference='',
-                                             date=time_received,
-                                             analyst=analyst
-                                             )
             event_id = add_event_result['id']
             event_object = Event.objects(id=event_id).first()
             for field_name, field_value in event.iteritems():
@@ -101,6 +130,8 @@ def save_data_to_crits(aggregate_ip_entry):
                                              related_type='Event',
                                              relationship_type=RelationshipTypes.RELATED_TO
                                              )
+            # Delete entry after data has been processed.
+            staging_new_events.delete_one(filter={'_id': event.get('_id')})
     update_ip_object_additional_fields(ip_address, last_time_received)
 
 

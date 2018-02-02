@@ -17,12 +17,12 @@ def save_ingest_data(analyst, source, ingest_data_entries):
     :return: (nothing)
     """
     client = MongoClient()
-    staging_ips = client.staging_crits_data.ips
+    staging_new_events = client.staging_crits_data.new_events
     for ingest_data_entry in ingest_data_entries:
         ingest_data_entry['analyst'] = analyst
         ingest_data_entry['source'] = source
         ingest_data_entry['timeReceived'] = pendulum.now('UTC')
-        staging_ips.insert_one(ingest_data_entry)
+        staging_new_events.insert_one(ingest_data_entry)
     return
 
 
