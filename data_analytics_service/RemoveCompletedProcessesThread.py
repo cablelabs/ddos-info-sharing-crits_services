@@ -12,8 +12,8 @@ class RemoveCompletedProcessesThread(Thread):
 
     def run(self):
         last_process_started = False
+        # Search the queue of analytics processes for the next completed process.
         while self.shutdown_queue.empty():
-            # Search for the next completed process, noting that it may not be the one currently in front.
             if not self.analytics_processes_queue.empty():
                 front_process = self.analytics_processes_queue.get()
                 if isinstance(front_process, Process) and not front_process.is_alive():
@@ -27,7 +27,7 @@ class RemoveCompletedProcessesThread(Thread):
             elif last_process_started:
                 self.remover_to_spawner_queue.put("Last process completed.")
                 last_process_started = False
-        # Terminate all processes in queue of processes.
+        # Terminate all analytics processes.
         while not self.analytics_processes_queue.empty():
             front_process = self.analytics_processes_queue.get()
             front_process.terminate()

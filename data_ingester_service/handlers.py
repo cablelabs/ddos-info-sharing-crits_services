@@ -13,7 +13,8 @@ def save_ingest_data(analyst, source, ingest_data_entries):
     :param source: The source of the POST message for the IP objects.
     :type source: str
     :param ingest_data_entries: A list of objects with data about attacks from IP addresses.
-    :type ingest_data_entries: list of dictionaries, each conforming to an 'ingestData' object in the definitions of the data ingester payload schema
+    :type ingest_data_entries: list of dictionaries, each conforming to an 'ingestData' object in the definitions of the
+    data ingester payload schema
     :return: (nothing)
     """
     client = MongoClient()

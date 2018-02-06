@@ -38,6 +38,7 @@ class OldDataPurger:
         self.users = client.crits.users
         self.old_ips = client.old_crits_data.ips
         self.old_events = client.old_crits_data.events
+        self.staging_bad_events = client.staging_crits_data.bad_events
 
     def delete_data_before_datetime(self, earliest_datetime):
         """
@@ -139,6 +140,7 @@ class OldDataPurger:
         :return: (nothing)
         """
         self.delete_old_events_sequential(earliest_datetime)
+        self.delete_bad_events(earliest_datetime)
 
     def delete_old_events_sequential(self, earliest_datetime):
         """
@@ -222,4 +224,15 @@ class OldDataPurger:
             pass
         duration = pendulum.now() - start_time
         print "Time to update IPs, sequential:", duration
+        return
+
+    def delete_bad_events(self, earliest_datetime):
+        """
+        Delete all records of Events submitted up to the input datetime that could not be recorded for some reason.
+        :param earliest_datetime: The datetime such that all data submitted before this time will be deleted.
+        :type earliest_datetime: datetime
+        :return: (nothing)
+        """
+        query = {'timeReceived': {'$lt': earliest_datetime}}
+        self.staging_bad_events.delete_many(filter=query)
         return

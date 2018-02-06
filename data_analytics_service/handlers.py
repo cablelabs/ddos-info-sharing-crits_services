@@ -1,6 +1,12 @@
 import ipaddress
+import os
 import pendulum
 from pymongo import MongoClient
+from ASNLookup.ASNLookupData import ASNLookupData
+from GeoIPLookup.GeoIPLookupData import GeoIPLookupData
+
+os.environ['DJANGO_SETTINGS_MODULE'] = 'crits.settings'
+
 from crits.core.crits_mongoengine import create_embedded_source
 from crits.core.handlers import add_releasability, add_releasability_instance
 from crits.core.source_access import SourceAccess
@@ -13,29 +19,26 @@ from crits.vocabulary.events import EventTypes
 from crits.vocabulary.objects import ObjectTypes
 from crits.vocabulary.relationships import RelationshipTypes
 from crits.vocabulary.status import Status
-from data_ingester_service.vocabulary import IngestFields
 from data_ingester_service.handlers import aggregate_event_data
-from ASNLookup.ASNLookupData import ASNLookupData
-from GeoIPLookup.GeoIPLookupData import GeoIPLookupData
+from data_ingester_service.vocabulary import IngestFields
 
 
-def process_ip_entry(aggregate_ip_entry):
+def process_aggregate_entry(aggregate_entry):
     # TODO: figure out how to handle errors in this function
-    save_data_to_crits(aggregate_ip_entry)
-    ip_address = aggregate_ip_entry.get('_id', '')
+    save_data_to_crits(aggregate_entry)
+    ip_address = aggregate_entry.get('_id', '')
     analyze_and_update_ip(ip_address)
     return
 
 
-def save_data_to_crits(aggregate_ip_entry):
+def save_data_to_crits(aggregate_entry):
     # TODO: Try to determine more specifically where steps may have terminated, not just checking for duplicate event.
     last_time_received = None
-    ip_address = aggregate_ip_entry.get('_id', '')
-    print "Processing data for IP '" + ip_address + "'."
+    ip_address = aggregate_entry.get('_id', '')
     client = MongoClient()
     staging_new_events = client.staging_crits_data.new_events
     staging_bad_events = client.staging_crits_data.bad_events
-    for event in aggregate_ip_entry['events']:
+    for event in aggregate_entry['events']:
         analyst = event.get('analyst')
         time_received = event.get('timeReceived')
         # Look for potential duplicate Event in current database.
@@ -63,7 +66,6 @@ def save_data_to_crits(aggregate_ip_entry):
                     'timeReceived': time_received,
                     'reason': 'duplicate'
                 }
-                #if staging_bad_events.count(filter=bad_event) < 1:
                 staging_bad_events.insert_one(bad_event)
                 staging_new_events.delete_one(filter={'_id': event.get('_id')})
                 break
@@ -71,7 +73,6 @@ def save_data_to_crits(aggregate_ip_entry):
             source = event.get('source')
             try:
                 title = "IP:[" + ip_address + "],Time:[" + time_received.strftime('%Y-%m-%dT%H:%M:%S.%fZ') + "]"
-                print "Adding new Event for IP '" + ip_address + "'."
                 add_event_result = add_new_event(title=title,
                                                  description='',
                                                  event_type=EventTypes.DISTRIBUTED_DENIAL_OF_SERVICE,
@@ -82,13 +83,6 @@ def save_data_to_crits(aggregate_ip_entry):
                                                  analyst=analyst
                                                  )
             except Exception:
-                bad_event = {
-                    'reporter': analyst,
-                    'timeReceived': time_received,
-                    'reason': 'Exception when adding Event.'
-                }
-                #if staging_bad_events.count(filter=bad_event) < 1:
-                staging_bad_events.insert_one(bad_event)
                 break
             if last_time_received is None:
                 last_time_received = time_received
@@ -121,7 +115,6 @@ def save_data_to_crits(aggregate_ip_entry):
                                             )
             event_object.save(username=analyst)
             ip_type = ip_address_type(ip_address)
-            print "Updating IP '" + ip_address + "'."
             update_ip_result = ip_add_update(ip_address=ip_address,
                                              ip_type=ip_type,
                                              source=source,
@@ -130,7 +123,7 @@ def save_data_to_crits(aggregate_ip_entry):
                                              related_type='Event',
                                              relationship_type=RelationshipTypes.RELATED_TO
                                              )
-            # Delete entry after data has been processed.
+            # Delete staging document after data has been processed.
             staging_new_events.delete_one(filter={'_id': event.get('_id')})
     update_ip_object_additional_fields(ip_address, last_time_received)
 
@@ -219,26 +212,17 @@ def update_event_aggregate_fields(ip_object):
             event = Event.objects(id=event_id).first()
             if event:
                 for obj in event.obj:
-                    if obj.object_type == ObjectTypes.TOTAL_BYTES_SENT:
-                        try:
+                    try:
+                        if obj.object_type == ObjectTypes.TOTAL_BYTES_SENT:
                             total_bytes_sent += int(obj.value)
-                        except (TypeError, ValueError):
-                            continue
-                    elif obj.object_type == ObjectTypes.TOTAL_PACKETS_SENT:
-                        try:
+                        elif obj.object_type == ObjectTypes.TOTAL_PACKETS_SENT:
                             total_packets_sent += int(obj.value)
-                        except (TypeError, ValueError):
-                            continue
-                    elif obj.object_type == ObjectTypes.PEAK_BYTES_PER_SECOND:
-                        try:
+                        elif obj.object_type == ObjectTypes.PEAK_BYTES_PER_SECOND:
                             aggregate_bytes_per_second += int(obj.value)
-                        except (TypeError, ValueError):
-                            continue
-                    elif obj.object_type == ObjectTypes.PEAK_PACKETS_PER_SECOND:
-                        try:
+                        elif obj.object_type == ObjectTypes.PEAK_PACKETS_PER_SECOND:
                             aggregate_packets_per_second += int(obj.value)
-                        except (TypeError, ValueError):
-                            continue
+                    except (TypeError, ValueError):
+                        continue
     update_ip_object_sub_object(ip_object, ObjectTypes.TOTAL_BYTES_SENT, str(total_bytes_sent))
     update_ip_object_sub_object(ip_object, ObjectTypes.TOTAL_PACKETS_SENT, str(total_packets_sent))
     update_ip_object_sub_object(ip_object, ObjectTypes.AGGREGATE_BYTES_PER_SECOND, str(aggregate_bytes_per_second))
@@ -252,14 +236,16 @@ def update_asn_information(ip_object):
     :type ip_object: IP
     :return: str, representing AS Number (which is used in next step of updating IP)
     """
+    as_number = ''
     asn_lookup_data = ASNLookupData(ip_object.ip)
     if asn_lookup_data:
         if asn_lookup_data.as_number:
-            update_ip_object_sub_object(ip_object, ObjectTypes.AS_NUMBER, asn_lookup_data.as_number)
+            as_number = asn_lookup_data.as_number
+            if as_number != 'NA':
+                update_ip_object_sub_object(ip_object, ObjectTypes.AS_NUMBER, as_number)
         if asn_lookup_data.as_name:
             update_ip_object_sub_object(ip_object, ObjectTypes.AS_NAME, asn_lookup_data.as_name)
-        return asn_lookup_data.as_number
-    return ''
+    return as_number
 
 
 def add_owning_source_to_ip(ip_object, as_number):
@@ -351,7 +337,7 @@ def update_geoip_information(ip_object):
 
 def update_ip_object_sub_object(ip_object, sub_object_type, sub_object_value):
     """
-    For the input IP object, set the sub-object of the input type to the input value, removing all previous values.
+    For the input IP object, set the sub-object of the input type to the input value, and remove all previous values.
     :param ip_object: The IP object to update.
     :type ip_object: IP
     :param sub_object_type: The type of the sub-object to update.
