@@ -1,3 +1,6 @@
 geoip2
+ipaddress
 ipwhois
+pendulum
+pymongo
 requests

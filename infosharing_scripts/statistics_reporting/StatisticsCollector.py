@@ -9,6 +9,7 @@ class StatisticsCollector:
         self.events = client.crits.events
         self.source_access = client.crits.source_access
         self.users = client.crits.users
+        self.staging_bad_events = client.staging_crits_data.bad_events
 
     def count_ips(self):
         return self.ips.count()

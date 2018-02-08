@@ -37,15 +37,18 @@ class UserStatisticsReporter:
         user_statistics_file_path = self.reports_directory+'user_statistics_for_'+report_date_string+'.csv'
         self.write_statistics(user_statistics_file_path, yesterday_start, yesterday_end)
         self.email_statistics(user_statistics_file_path, yesterday_start)
+        # Clear collection of invalid Events submitted up to the end of yesterday.
+        self.collector.staging_bad_events.delete_many(filter={'timeReceived': {'$lte': yesterday_end}})
 
     def write_statistics(self, report_filepath, duration_start, duration_end):
-        field_names = ['Username', 'First Name', 'Last Name', 'Company', 'Email', 'IPs', 'Events']
+        field_names = ['Username', 'First Name', 'Last Name', 'Company', 'Email', 'IPs', 'Events', 'Invalid Events']
         with open(report_filepath, 'wb') as csv_file:
             stats_writer = csv.DictWriter(csv_file, fieldnames=field_names)
             stats_writer.writeheader()
             for user in self.collector.find_users():
                 username = user['username']
                 submissions_counts = self.collector.count_submissions_from_user_within_duration(username, duration_start, duration_end)
+                number_of_excluded_events = self.collector.count_excluded_events(username, duration_start, duration_end)
                 next_row = {
                     'Username': username,
                     'First Name': user['first_name'],
@@ -53,7 +56,8 @@ class UserStatisticsReporter:
                     'Company': user['organization'],
                     'Email': user['email'],
                     'IPs': submissions_counts['ips'],
-                    'Events': submissions_counts['events']
+                    'Events': submissions_counts['events'],
+                    'Invalid Events': number_of_excluded_events
                 }
                 stats_writer.writerow(next_row)
 
@@ -74,11 +78,13 @@ class UserStatisticsReporter:
                     company = row['Company']
                     ips = row['IPs']
                     events = row['Events']
+                    excluded_events = row['Invalid Events']
                     lines = [
                         'Username: ' + username,
                         'Company: ' + company,
                         'IPs: ' + ips,
-                        'Events: ' + events
+                        'Valid Events: ' + events,
+                        'Invalid Events: ' + excluded_events
                     ]
                     for line in lines:
                         body_text += line + "\n"
@@ -105,6 +111,7 @@ class UserStatisticsReporter:
                     continue
                 number_of_ips = row['IPs']
                 number_of_events = row['Events']
+                number_of_invalid_events = row['Invalid Events']
                 with open(self.user_statistics_message_filename, 'r') as message_file:
                     message = MIMEText(message_file.read())
                 message['From'] = self.sender_email
@@ -118,7 +125,8 @@ class UserStatisticsReporter:
                 message_string = message.as_string()
                 message_string = message_string.format(username=username,
                                                        number_of_ips=number_of_ips,
-                                                       number_of_events=number_of_events)
+                                                       number_of_events=number_of_events,
+                                                       number_of_invalid_events=number_of_invalid_events)
                 try:
                     server.sendmail(self.sender_email, to_email, message_string)
                 except (SMTPRecipientsRefused, SMTPHeloError, SMTPSenderRefused,

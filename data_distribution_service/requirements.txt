@@ -1,2 +1,4 @@
+pendulum
 pytz
+strict_rfc3339
 tzlocal

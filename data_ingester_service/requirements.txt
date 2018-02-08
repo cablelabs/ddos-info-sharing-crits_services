@@ -1,4 +1,4 @@
 ipaddress
 jsonschema
 pendulum
-strict-rfc3339
+strict_rfc3339
