@@ -1,5 +1,9 @@
-This service is one of three services for the DDoS Information Sharing Project. This service receives data from ISPs through POST requests to the API.
+This service is one of three services designed for the DDoS Information Sharing Project. ISPs submit data to this
+service by sending POST requests to the API. The data send must conform to the ingest schema given in the file
+"Data Ingester Payload Schema.json". The service saves incoming data to a database separate from CRITs. The database
+name is "staging_crits_data", and data is stored in the "new_events" collection of this database.
 
-WARNING: Before loading this service with CRITs, make sure the /data directory contains a file named 'Data-Ingester-Payload-Schema.json'.
-In other words, make sure the file '/data/Data-Ingester-Payload-Schema.json' exists. This file should contain a JSON schema file describing
-the format of data sent to the service.
+Additional Setup:
+Before loading the service with CRITs, "Data Ingester Payload Schema.json" should be copied to the /data directory and
+be renamed 'Data-Ingester-Payload-Schema.json'. This is because part of the service looks for a file at the fixed
+location '/data/Data-Ingester-Payload-Schema.json'.

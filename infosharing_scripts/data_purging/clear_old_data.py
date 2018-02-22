@@ -1,6 +1,3 @@
-# NOTE: This script should only be used in testing to clear the data in the "old_crits_data".
-# It is not meant to be used in production.
-
 from pymongo import MongoClient
 
 client = MongoClient()

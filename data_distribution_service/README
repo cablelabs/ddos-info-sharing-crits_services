@@ -1,0 +1,3 @@
+This service is one of three services designed for the DDoS Information Sharing Project. ISPs receive data about
+attacking IP addresses from their own network by sending GET requests to the API. The data conforms to the data
+distribution schema outlined in a separate repository (https://github.com/cablelabs/ddos-info-sharing).

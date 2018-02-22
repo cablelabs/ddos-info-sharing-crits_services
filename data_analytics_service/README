@@ -1,0 +1,15 @@
+This service is one of three services designed for the DDoS Information Sharing Project. The service performs analytics
+on data received through the ingest service. It runs on a separate background process, and spawns additional processes
+to analyze data in parallel. The service reads data from the "new_events" collection of the "staging_crits_data"
+database. In addition, when it finds data for events that have already been submitted, it adds a new entry to the
+"bad_events" collection of the same database.
+
+Running the Service:
+Start the service by running the script "start_analytics_service.sh". The script saves its output to the file
+"nohup.out". Shutdown the service at any time by running the script "stop_analytics_service.sh".
+Both scripts should be run from within the "data_analytics_service" directory.
+
+Additional Setup:
+Add the file "Paths.property" to this directory. The file should set the variable "pythonpath" to the path that will be
+used when running the Python scripts. It should include both the main CRITs directory and the directory with all
+packages required to run the scripts.

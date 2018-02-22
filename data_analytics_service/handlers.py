@@ -1,3 +1,4 @@
+import csv
 import ipaddress
 import os
 import pendulum
@@ -28,15 +29,25 @@ def debug_message(debug, message):
         print "DEBUG: " + pendulum.now('UTC').to_rfc3339_string() + ": " + message
 
 
-def process_aggregate_entry(aggregate_entry):
+def log_performance_data(performance_log_file_lock, operation, time):
+    if performance_log_file_lock is not None:
+        field_names = ['operation', 'time']
+        performance_log_file_lock.acquire()
+        with open('performance_log_file.csv', 'a') as csv_file:
+            writer = csv.DictWriter(csv_file, fieldnames=field_names)
+            writer.writerow({'operation': operation, 'time': time})
+        performance_log_file_lock.release()
+
+
+def process_aggregate_entry(aggregate_entry, performance_log_file_lock=None):
     # TODO: figure out how to handle errors in this function
-    save_data_to_crits(aggregate_entry)
+    save_data_to_crits(aggregate_entry, performance_log_file_lock)
     ip_address = aggregate_entry.get('_id', '')
-    analyze_and_update_ip(ip_address)
+    update_ip_object_additional_fields(ip_address, performance_log_file_lock)
     return
 
 
-def save_data_to_crits(aggregate_entry):
+def save_data_to_crits(aggregate_entry, performance_log_file_lock):
     debug = False
     # TODO: Try to determine more specifically where steps may have terminated, not just checking for duplicate event.
     last_time_received = None
@@ -81,6 +92,7 @@ def save_data_to_crits(aggregate_entry):
         try:
             title = "IP:[" + ip_address + "],Time:[" + time_received.strftime('%Y-%m-%dT%H:%M:%S.%fZ') + "]"
             debug_message(debug, "save_data_to_crits(): Adding new event.")
+            start_time = pendulum.now('UTC')
             add_event_result = add_new_event(title=title,
                                              description='',
                                              event_type=EventTypes.DISTRIBUTED_DENIAL_OF_SERVICE,
@@ -90,8 +102,10 @@ def save_data_to_crits(aggregate_entry):
                                              date=time_received,
                                              analyst=analyst
                                              )
+            duration = start_time.diff(pendulum.now('UTC'))
+            log_performance_data(performance_log_file_lock, 'Add new Event', duration)
             debug_message(debug, "save_data_to_crits(): New event added.")
-        except Exception:
+        except Exception as e:
             debug_message(debug, "save_data_to_crits(): Exception adding event.")
             break
         if last_time_received is None:
@@ -102,6 +116,7 @@ def save_data_to_crits(aggregate_entry):
         event_object = Event.objects(id=event_id).first()
         debug_message(debug, "save_data_to_crits(): Adding data to the event.")
         for field_name, field_value in event.iteritems():
+            start_time = pendulum.now('UTC')
             try:
                 object_type = IngestFields.to_object_type(field_name)
                 variable_type = IngestFields.api_field_to_variable_type(field_name)
@@ -124,11 +139,17 @@ def save_data_to_crits(aggregate_entry):
                                         reference='',
                                         analyst=analyst
                                         )
+            duration = start_time.diff(pendulum.now('UTC'))
+            log_performance_data(performance_log_file_lock, 'Add object(s) to Event', duration)
         debug_message(debug, "save_data_to_crits(): Saving data to event.")
+        start_time = pendulum.now('UTC')
         event_object.save(username=analyst)
+        duration = start_time.diff(pendulum.now('UTC'))
+        log_performance_data(performance_log_file_lock, 'Save Event document', duration)
         debug_message(debug, "save_data_to_crits(): Event data saved.")
         ip_type = ip_address_type(ip_address)
         debug_message(debug, "save_data_to_crits(): Add/update to IP '" + ip_address + "'.")
+        start_time = pendulum.now('UTC')
         update_ip_result = ip_add_update(ip_address=ip_address,
                                          ip_type=ip_type,
                                          source=source,
@@ -137,11 +158,15 @@ def save_data_to_crits(aggregate_entry):
                                          related_type='Event',
                                          relationship_type=RelationshipTypes.RELATED_TO
                                          )
+        duration = start_time.diff(pendulum.now('UTC'))
+        log_performance_data(performance_log_file_lock, 'Update IP by associating with Event', duration)
         debug_message(debug, "save_data_to_crits(): Add/update to IP '" + ip_address + "'.")
         # Delete staging document after data has been processed.
+        start_time = pendulum.now('UTC')
         staging_new_events.delete_one(filter={'_id': event.get('_id')})
+        duration = start_time.diff(pendulum.now('UTC'))
+        log_performance_data(performance_log_file_lock, 'Delete Event from staging', duration)
         debug_message(debug, "save_data_to_crits(): Staging event deleted.")
-    update_ip_object_additional_fields(ip_address, last_time_received)
 
 
 def ip_address_type(ip):
@@ -162,45 +187,7 @@ def ip_address_type(ip):
         raise ValueError('IP is not a valid IPv4 or IPv6 address.')
 
 
-def update_ip_object_additional_fields(ip_address, last_time_received=None):
-    debug = False
-    is_last_time_received_present = False
-    is_number_of_times_seen_present = False
-    if last_time_received is None:
-        last_time_received = pendulum.now('UTC')
-    ip_object = IP.objects(ip=ip_address).first()
-    number_of_times_seen_str = str(len(ip_object.relationships))
-    debug_message(debug, "update_ip_object_additional_fields(): Iterating over objects for IP '" + ip_object.ip + "'.")
-    for o in ip_object.obj:
-        if o.object_type == ObjectTypes.LAST_TIME_RECEIVED:
-            debug_message(debug, ": update_ip_object_additional_fields(): Updating last time received for IP '" + ip_object.ip + "'.")
-            previous_value = o.value
-            previous_value_datetime = pendulum.strptime(previous_value, '%Y-%m-%dT%H:%M:%S.%fZ')
-            last_time_received = max(previous_value_datetime, last_time_received)
-            last_time_received_str = last_time_received.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
-            o.value = last_time_received_str
-            is_last_time_received_present = True
-        elif o.object_type == ObjectTypes.NUMBER_OF_TIMES_SEEN:
-            debug_message(debug, "update_ip_object_additional_fields(): Updating number of times seen for IP '" + ip_object.ip + "'.")
-            o.value = number_of_times_seen_str
-            is_number_of_times_seen_present = True
-    # Create new sub-objects for types that were not present.
-    autofill_analyst = 'analysis_autofill'
-    autofill_source = get_user_organization(autofill_analyst)
-    if not is_last_time_received_present:
-        last_time_received_str = last_time_received.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
-        debug_message(debug, "update_ip_object_additional_fields(): Adding last time received object for IP '" + ip_object.ip + "'.")
-        ip_object.add_object(ObjectTypes.LAST_TIME_RECEIVED, last_time_received_str, autofill_source, '', '', autofill_analyst)
-    if not is_number_of_times_seen_present:
-        debug_message(debug, "update_ip_object_additional_fields(): Adding number of times seen object for IP '" + ip_object.ip + "'.")
-        ip_object.add_object(ObjectTypes.NUMBER_OF_TIMES_SEEN, number_of_times_seen_str, autofill_source, '', '', autofill_analyst)
-    ip_object.set_status(Status.IN_PROGRESS)
-    debug_message(debug, "update_ip_object_additional_fields(): Saving data for IP '" + ip_object.ip + "'.")
-    ip_object.save(username=autofill_analyst)
-    debug_message(debug, "update_ip_object_additional_fields(): Data saved for IP '" + ip_object.ip + "'.")
-
-
-def analyze_and_update_ip(ip_address):
+def update_ip_object_additional_fields(ip_address, performance_log_file_lock):
     """
     Analyze the input IP address' object, and update it based on lookup information.
     :param ip_address: The IP address of the object to update.
@@ -208,38 +195,38 @@ def analyze_and_update_ip(ip_address):
     :return: (nothing)
     """
     debug = False
-    ip_object = IP.objects(ip=ip_address).first()
-    update_event_aggregate_fields(ip_object)
-    as_number = update_asn_information(ip_object)
-    add_owning_source_to_ip(ip_object, as_number)
-    update_reporter_fields(ip_object)
-    update_geoip_information(ip_object)
-    ip_object.set_status(Status.ANALYZED)
-    debug_message(debug, "analyze_and_update_ip(): Set status of IP '" + ip_object.ip + "' to 'Analyzed'.")
     autofill_analyst = 'analysis_autofill'
-    ip_object.save(username=autofill_analyst)
-    debug_message(debug, "analyze_and_update_ip(): Saved analytics values for IP '" + ip_object.ip + "'.")
-    return
 
+    # Get IP object to update
+    start_time = pendulum.now('UTC')
+    ip_object = IP.objects(ip=ip_address).first()
+    duration = start_time.diff(pendulum.now('UTC'))
+    log_performance_data(performance_log_file_lock, 'Find IP object to update fields', duration)
+    if ip_object is None:
+        return
 
-def update_event_aggregate_fields(ip_object):
-    """
-    Update fields that are the result of aggregating data from multiple events.
-    :param ip_object: The IP object to update.
-    :type ip_object: IP
-    :return: (nothing)
-    """
-    debug = False
+    source_names = []
+    last_time_received = None
     total_bytes_sent = 0
     total_packets_sent = 0
     aggregate_bytes_per_second = 0
     aggregate_packets_per_second = 0
-    debug_message(debug, "update_event_aggregate_fields(): Iterating over relationships for IP '" + ip_object.ip + "'.")
+    debug_message(debug, "Iterating through relationships of IP '" + ip_address + "'.")
     for relationship in ip_object.relationships:
         if relationship.rel_type == 'Event':
             event_id = relationship.object_id
             event = Event.objects(id=event_id).first()
-            if event:
+            if event is not None:
+                for src in event.source:
+                    if src.name not in source_names:
+                        debug_message(debug,"Tracking source as reporter for IP '" + ip_address + "'.")
+                        source_names.append(src.name)
+                        debug_message(debug,"Source tracked as reporter for IP '" + ip_address + "'.")
+                    for instance in src.instances:
+                        if last_time_received is None:
+                            last_time_received = instance.date
+                        else:
+                            last_time_received = max(last_time_received, instance.date)
                 for obj in event.obj:
                     try:
                         if obj.object_type == ObjectTypes.TOTAL_BYTES_SENT:
@@ -252,12 +239,58 @@ def update_event_aggregate_fields(ip_object):
                             aggregate_packets_per_second += int(obj.value)
                     except (TypeError, ValueError):
                         continue
-    debug_message(debug, "update_event_aggregate_fields(): Adding objects for aggregate fields for IP '" + ip_object.ip + "'.")
-    update_ip_object_sub_object(ip_object, ObjectTypes.TOTAL_BYTES_SENT, str(total_bytes_sent))
-    update_ip_object_sub_object(ip_object, ObjectTypes.TOTAL_PACKETS_SENT, str(total_packets_sent))
-    update_ip_object_sub_object(ip_object, ObjectTypes.AGGREGATE_BYTES_PER_SECOND, str(aggregate_bytes_per_second))
-    update_ip_object_sub_object(ip_object, ObjectTypes.AGGREGATE_PACKETS_PER_SECOND, str(aggregate_packets_per_second))
-    debug_message(debug, "update_event_aggregate_fields(): Objects for aggregate fields for IP '" + ip_object.ip + "' added.")
+    ip_object.delete_all_objects()
+    number_of_times_seen_str = str(len(ip_object.relationships))
+    add_sub_object_to_ip(ip_object, ObjectTypes.NUMBER_OF_TIMES_SEEN, number_of_times_seen_str)
+
+    # Update the appropriate sub-objects for reporter fields.
+    debug_message(debug, "Creating objects for reporters of IP '" + ip_address + "'.")
+    for reporter in source_names:
+        add_sub_object_to_ip(ip_object, ObjectTypes.REPORTED_BY, reporter)
+    debug_message(debug, "Created objects for reporters of IP '" + ip_address + "'.")
+    number_of_reporters_str = str(len(source_names))
+    add_sub_object_to_ip(ip_object, ObjectTypes.NUMBER_OF_REPORTERS, number_of_reporters_str)
+    debug_message(debug, "Created object for number of reporters of IP '" + ip_address + "'.")
+
+    last_time_received_str = last_time_received.strftime('%Y-%m-%dT%H:%M:%S.%fZ')
+    debug_message(debug,"Adding last time received object for IP '" + ip_address + "'.")
+    add_sub_object_to_ip(ip_object, ObjectTypes.LAST_TIME_RECEIVED, last_time_received_str)
+
+    # Update fields that are the result of aggregating data from multiple events.
+    debug_message(debug, "Adding objects for aggregate fields for IP '" + ip_address + "'.")
+    add_sub_object_to_ip(ip_object, ObjectTypes.TOTAL_BYTES_SENT, str(total_bytes_sent))
+    add_sub_object_to_ip(ip_object, ObjectTypes.TOTAL_PACKETS_SENT, str(total_packets_sent))
+    add_sub_object_to_ip(ip_object, ObjectTypes.AGGREGATE_BYTES_PER_SECOND, str(aggregate_bytes_per_second))
+    add_sub_object_to_ip(ip_object, ObjectTypes.AGGREGATE_PACKETS_PER_SECOND, str(aggregate_packets_per_second))
+    debug_message(debug, "Objects for aggregate fields for IP '" + ip_address + "' added.")
+
+    start_time = pendulum.now('UTC')
+    as_number = update_asn_information(ip_object)
+    duration = start_time.diff(pendulum.now('UTC'))
+    log_performance_data(performance_log_file_lock, "Update ASN information", duration)
+
+    start_time = pendulum.now('UTC')
+    add_owning_source_to_ip(ip_object, as_number)
+    duration = start_time.diff(pendulum.now('UTC'))
+    log_performance_data(performance_log_file_lock, "Add owning source to IP", duration)
+
+    start_time = pendulum.now('UTC')
+    update_geoip_information(ip_object)
+    duration = start_time.diff(pendulum.now('UTC'))
+    log_performance_data(performance_log_file_lock, "Update geoIP information", duration)
+
+    start_time = pendulum.now('UTC')
+    ip_object.set_status(Status.ANALYZED)
+    duration = start_time.diff(pendulum.now('UTC'))
+    log_performance_data(performance_log_file_lock, "Set status of IP to 'Analyzed'", duration)
+    debug_message(debug, "Set status of IP '" + ip_address + "' to 'Analyzed'.")
+
+    debug_message(debug, "Saving data for IP '" + ip_address + "'.")
+    start_time = pendulum.now('UTC')
+    ip_object.save(username=autofill_analyst)
+    duration = start_time.diff(pendulum.now('UTC'))
+    log_performance_data(performance_log_file_lock, "Save IP after analytics", duration)
+    debug_message(debug, "Saved analytics values for IP '" + ip_address + "'.")
 
 
 def update_asn_information(ip_object):
@@ -277,11 +310,11 @@ def update_asn_information(ip_object):
             as_number = asn_lookup_data.as_number
             if as_number != 'NA':
                 debug_message(debug, "update_asn_information(): Adding object to IP '" + ip_object.ip + "' with AS Number.")
-                update_ip_object_sub_object(ip_object, ObjectTypes.AS_NUMBER, as_number)
+                add_sub_object_to_ip(ip_object, ObjectTypes.AS_NUMBER, as_number)
                 debug_message(debug, "update_asn_information(): AS Number object added to IP '" + ip_object.ip + "'.")
         if asn_lookup_data.as_name:
             debug_message(debug, "update_asn_information(): Adding AS Name object to IP '" + ip_object.ip + "'.")
-            update_ip_object_sub_object(ip_object, ObjectTypes.AS_NAME, asn_lookup_data.as_name)
+            add_sub_object_to_ip(ip_object, ObjectTypes.AS_NAME, asn_lookup_data.as_name)
             debug_message(debug, "update_asn_information(): AS Name object added to IP '" + ip_object.ip + "'.")
     return as_number
 
@@ -327,51 +360,6 @@ def add_owning_source_to_ip(ip_object, as_number):
     return
 
 
-def update_reporter_fields(ip_object):
-    """
-    Update fields related to the reporters of the IP, including the number of reporters, and the name of all reporters.
-    :param ip_object: The IP object to update.
-    :type ip_object: IP
-    :return: (nothing)
-    """
-    debug = False
-    # Step 1: Remove all previous "Reported By" sub-objects.
-    # To prevent skipping objects while iterating through sub-objects, store list of objects to remove later.
-    previous_object_values = []
-    debug_message(debug, "update_reporter_fields(): Iterating through objects of IP '" + ip_object.ip + "'.")
-    for o in ip_object.obj:
-        if o.object_type == ObjectTypes.REPORTED_BY:
-            previous_object_values.append(o.value)
-    debug_message(debug, "update_reporter_fields(): Removing previous reporters from IP '" + ip_object.ip + "'.")
-    for previous_value in previous_object_values:
-        ip_object.remove_object(ObjectTypes.REPORTED_BY, previous_value)
-    debug_message(debug, "update_reporter_fields(): Removed previous reporters from IP '" + ip_object.ip + "'.")
-    # Step 2: Determine which sources are reporters by finding all Events reported for the IP.
-    # Note: This is not calculated from IP's sources because those are not removed when Events are removed.
-    source_names = []
-    debug_message(debug, "update_reporter_fields(): Iterating through relationships of IP '" + ip_object.ip + "'.")
-    for relationship in ip_object.relationships:
-        if relationship.rel_type == 'Event':
-            event_id = relationship.object_id
-            event_object = Event.objects(id=event_id).first()
-            if event_object is not None and 'source' in event_object:
-                for src in event_object['source']:
-                    if src.name not in source_names:
-                        debug_message(debug, "update_reporter_fields(): Tracking source as reporter for IP '" + ip_object.ip + "'.")
-                        source_names.append(src.name)
-                        debug_message(debug, "update_reporter_fields(): Source tracked as reporter for IP '" + ip_object.ip + "'.")
-    # Step 3: Update the appropriate sub-objects in the IP object.
-    autofill_analyst = 'analysis_autofill'
-    debug_message(debug, "update_reporter_fields(): Creating objects for reporters of IP '" + ip_object.ip + "'.")
-    for reporter in source_names:
-        # Don't use my wrapper function to update sub-object, because the goal is to save each reporter name.
-        ip_object.add_object(ObjectTypes.REPORTED_BY, reporter, get_user_organization(autofill_analyst), '', '', autofill_analyst)
-    debug_message(debug, "update_reporter_fields(): Created objects for reporters of IP '" + ip_object.ip + "'.")
-    number_of_reporters_str = str(len(source_names))
-    update_ip_object_sub_object(ip_object, ObjectTypes.NUMBER_OF_REPORTERS, number_of_reporters_str)
-    debug_message(debug, "update_reporter_fields(): Created object for number of reporters of IP '" + ip_object.ip + "'.")
-
-
 def update_geoip_information(ip_object):
     """
     Set the City, State, Country, Latitude, and Longitude of the input IP object.
@@ -386,29 +374,29 @@ def update_geoip_information(ip_object):
     if geoip_lookup_data:
         if geoip_lookup_data.city:
             debug_message(debug, "update_geoip_information(): Adding City object to IP '" + ip_object.ip + "'.")
-            update_ip_object_sub_object(ip_object, ObjectTypes.CITY, geoip_lookup_data.city)
+            add_sub_object_to_ip(ip_object, ObjectTypes.CITY, geoip_lookup_data.city)
             debug_message(debug, "update_geoip_information(): Added City object to IP '" + ip_object.ip + "'.")
         if geoip_lookup_data.country:
             debug_message(debug, "update_geoip_information(): Adding Country object to IP '" + ip_object.ip + "'.")
-            update_ip_object_sub_object(ip_object, ObjectTypes.COUNTRY, geoip_lookup_data.country)
+            add_sub_object_to_ip(ip_object, ObjectTypes.COUNTRY, geoip_lookup_data.country)
             debug_message(debug, "update_geoip_information(): Added Counntry object to IP '" + ip_object.ip + "'.")
         if geoip_lookup_data.latitude:
             debug_message(debug, "update_geoip_information(): Adding Latitude object to IP '" + ip_object.ip + "'.")
-            update_ip_object_sub_object(ip_object, ObjectTypes.LATITUDE, geoip_lookup_data.latitude)
+            add_sub_object_to_ip(ip_object, ObjectTypes.LATITUDE, geoip_lookup_data.latitude)
             debug_message(debug, "update_geoip_information(): Added Latitude object to IP '" + ip_object.ip + "'.")
         if geoip_lookup_data.longitude:
             debug_message(debug, "update_geoip_information(): Adding Longitude object to IP '" + ip_object.ip + "'.")
-            update_ip_object_sub_object(ip_object, ObjectTypes.LONGITUDE, geoip_lookup_data.longitude)
+            add_sub_object_to_ip(ip_object, ObjectTypes.LONGITUDE, geoip_lookup_data.longitude)
             debug_message(debug, "update_geoip_information(): Added Longitude object to IP '" + ip_object.ip + "'.")
         if geoip_lookup_data.state:
             debug_message(debug, "update_geoip_information(): Adding State object to IP '" + ip_object.ip + "'.")
-            update_ip_object_sub_object(ip_object, ObjectTypes.STATE, geoip_lookup_data.state)
+            add_sub_object_to_ip(ip_object, ObjectTypes.STATE, geoip_lookup_data.state)
             debug_message(debug, "update_geoip_information(): Added State object to IP '" + ip_object.ip + "'.")
 
 
-def update_ip_object_sub_object(ip_object, sub_object_type, sub_object_value):
+def add_sub_object_to_ip(ip_object, sub_object_type, sub_object_value):
     """
-    For the input IP object, set the sub-object of the input type to the input value, and remove all previous values.
+    For the input IP object, set the sub-object of the input type to the input value.
     :param ip_object: The IP object to update.
     :type ip_object: IP
     :param sub_object_type: The type of the sub-object to update.
@@ -419,12 +407,5 @@ def update_ip_object_sub_object(ip_object, sub_object_type, sub_object_value):
     """
     autofill_analyst = 'analysis_autofill'
     if sub_object_type and sub_object_value:
-        # To prevent skipping objects while iterating through sub-objects, store list of objects to remove later.
-        previous_object_values = []
-        for o in ip_object.obj:
-            if o.object_type == sub_object_type:
-                previous_object_values.append(o.value)
-        for previous_value in previous_object_values:
-            ip_object.remove_object(sub_object_type, previous_value)
         ip_object.add_object(sub_object_type, sub_object_value, get_user_organization(autofill_analyst), '', '', autofill_analyst)
     return

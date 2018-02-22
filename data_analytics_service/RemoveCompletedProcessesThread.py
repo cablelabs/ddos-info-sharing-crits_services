@@ -10,7 +10,7 @@ class RemoveCompletedProcessesThread(Thread):
         self.analytics_processes_queue = analytics_processes_queue
         self.remover_to_spawner_queue = remover_to_spawner_queue
         self.bounded_semaphore = bounded_semaphore
-        self.debug = True
+        self.debug = False
 
     def run(self):
         last_process_started = False

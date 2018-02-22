@@ -1,0 +1,14 @@
+File Descriptions:
+
+clear_old_data.py: Python script to removes all entries in all collections of the "old_crits_data" database where data
+is stored after purging. It is not meant to be used in production; it is useful for testing the purge script.
+
+DataPurgerTest.py: Python script that tests data purge script to make sure it works correctly. It does so by storing
+partial data before the purge, and checking the same objects again after the purge, if they should still be present.
+
+duration_config.json: Configuration file that determines how far back to keep data, in terms of the number of days and
+months from the day the script is run. An example may already be present, but the values of the fields can be changed.
+
+OldDataPurger.py: Python file containing class that defines how to purge data.
+
+purge_script.py: Main Python script that purges data. Uses class defined in OldDataPurger.py.
