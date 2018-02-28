@@ -23,7 +23,7 @@ def save_ingest_data(analyst, source, ingest_data_entries):
         ingest_data_entry['analyst'] = analyst
         ingest_data_entry['source'] = source
         ingest_data_entry['timeReceived'] = pendulum.now('UTC')
-        staging_new_events.insert_one(ingest_data_entry)
+        staging_new_events.insert(ingest_data_entry)
     return
 
 

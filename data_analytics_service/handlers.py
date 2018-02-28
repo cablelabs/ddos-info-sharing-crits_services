@@ -163,7 +163,7 @@ def save_data_to_crits(aggregate_entry, performance_log_file_lock):
         debug_message(debug, "save_data_to_crits(): Add/update to IP '" + ip_address + "'.")
         # Delete staging document after data has been processed.
         start_time = pendulum.now('UTC')
-        staging_new_events.delete_one(filter={'_id': event.get('_id')})
+        staging_new_events.remove(spec_or_id={'_id': event.get('_id')})
         duration = start_time.diff(pendulum.now('UTC'))
         log_performance_data(performance_log_file_lock, 'Delete Event from staging', duration)
         debug_message(debug, "save_data_to_crits(): Staging event deleted.")

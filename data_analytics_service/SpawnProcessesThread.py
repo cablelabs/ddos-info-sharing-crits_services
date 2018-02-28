@@ -12,13 +12,13 @@ class SpawnProcessesThread(Thread):
         self.analytics_processes_queue = analytics_processes_queue
         self.remover_to_spawner_queue = remover_to_spawner_queue
         self.bounded_semaphore = bounded_semaphore
-        self.debug = False
+        self.debug = True
         # Note: It is highly recommended to turn off performance logging in production.
-        self.performance_logging = False
+        self.performance_logging = True
 
     def run(self):
         # Set connect=False because we're opening MongoClient before a fork, and get a warning message otherwise.
-        client = MongoClient(connect=False)
+        client = MongoClient()
         staging_new_events = client.staging_crits_data.new_events
         performance_log_file_lock = Lock()
         while self.shutdown_queue.empty():
@@ -44,17 +44,17 @@ class SpawnProcessesThread(Thread):
                 if not self.shutdown_queue.empty():
                     self.debug_message("Shutdown signal received while iterating over aggregation results.")
                     return
-                self.debug_message("Acquiring semaphore to add analytics process.")
+                #self.debug_message("Acquiring semaphore to add analytics process.")
                 self.bounded_semaphore.acquire()
-                self.debug_message("Semaphore acquired to add analytics process.")
+                #self.debug_message("Semaphore acquired to add analytics process.")
                 args = (entry,)
                 if self.performance_logging:
                     args = (entry, performance_log_file_lock)
                 p = Process(target=process_aggregate_entry, args=args)
                 p.start()
-                self.debug_message("Analytics process started.")
+                #self.debug_message("Analytics process started.")
                 self.analytics_processes_queue.put(p)
-                self.debug_message("Analytics process added to queue.")
+                #self.debug_message("Analytics process added to queue.")
             # Notify remover thread that this thread (spawner) has added last process for current round of aggregation.
             self.debug_message("Acquiring semaphore")
             self.bounded_semaphore.acquire()

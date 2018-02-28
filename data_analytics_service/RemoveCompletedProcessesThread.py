@@ -10,7 +10,7 @@ class RemoveCompletedProcessesThread(Thread):
         self.analytics_processes_queue = analytics_processes_queue
         self.remover_to_spawner_queue = remover_to_spawner_queue
         self.bounded_semaphore = bounded_semaphore
-        self.debug = False
+        self.debug = True
 
     def run(self):
         last_process_started = False
@@ -46,12 +46,13 @@ class RemoveCompletedProcessesThread(Thread):
             #self.debug_message("Viewing front item in analytics process queue (during shutdown).")
             front_process = self.analytics_processes_queue.get()
             #self.debug_message("Item acquired.")
-            front_process.terminate()
-            #self.debug_message("Process terminated.")
-            front_process.join()
-            #self.debug_message("Process joined.")
+            if isinstance(front_process, Process):
+                front_process.terminate()
+                #self.debug_message("Process terminated.")
+                front_process.join()
+                self.debug_message("Process joined.")
             self.bounded_semaphore.release()
-            #self.debug_message("Semaphore released.")
+            self.debug_message("Semaphore released.")
 
     def debug_message(self, message):
         if self.debug:

@@ -9,6 +9,7 @@ def get_asn_data_from_ipwhois(ip_address):
         net = Net(ip_address)
         obj = IPASN(net)
         result = obj.lookup()
+        return result
     except ValueError:
         raise
     except IPDefinedError:
@@ -17,21 +18,21 @@ def get_asn_data_from_ipwhois(ip_address):
         raise ValueError("IP address " + ip_address + " does not have entry in ASN registry.")
     except HTTPLookupError as e:
         raise Exception(e.message)
-    output = {
-        'as_number': result['asn'],
-        'country_code': result['asn_country_code']
-    }
-    return output
+    # output = {
+    #     'as_number': result['asn'],
+    #     'country_code': result['asn_country_code']
+    # }
+    # return output
 
 
 def get_as_number_from_ipwhois(ip_address):
     result = get_asn_data_from_ipwhois(ip_address)
-    return result['as_number']
+    return result['asn']
 
 
 def get_country_code_from_ipwhois(ip_address):
     result = get_asn_data_from_ipwhois(ip_address)
-    return result['country_code']
+    return result['asn_country_code']
 
 
 def get_rdap_lookup_result(ip_address):
