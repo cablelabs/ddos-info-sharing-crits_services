@@ -7,6 +7,7 @@ from crits.core.user_tools import user_sources, get_user_organization
 from crits.core.handlers import get_source_names, collect_objects
 from crits.core.class_mapper import class_from_type
 from crits.services.handlers import get_config
+from crits.vocabulary.indicators import IndicatorCI
 
 from datetime import datetime
 from dateutil.tz import tzutc
@@ -77,6 +78,9 @@ class TAXIIPollForm(forms.Form):
                  label="TAXII Feeds",
                  help_text="Feeds to poll for data",
                  widget=forms.SelectMultiple(attrs={'style':"height:200px;"}))
+
+    import_all = forms.BooleanField(required=False, initial=False,
+                            label="Skip preview and import all data into CRITs")
 
     use_last = forms.BooleanField(required=False, initial=True,
                                   label='Get all messages since last full poll')
@@ -160,6 +164,11 @@ class TAXIIServiceConfigForm(forms.Form):
                   label="Pkg Header Events",
                   initial=False,
                   help_text="Create an Event from each STIX package header & relate all items to it.")
+
+    obs_as_ind = forms.BooleanField(required=False,
+                  label="Observable as Indicator",
+                  initial=False,
+                  help_text="Create indicators for all qualifying observables instead of Domain and IP TLOs")
 
     max_rels = forms.IntegerField(required=True,
                                   label="Maximum Related",
@@ -295,12 +304,10 @@ class TAXIIFeedConfigForm(forms.Form):
                           initial='',
                           widget=forms.HiddenInput())
 
-    source = forms.CharField(required=False,
-                             label="CRITs Source",
-                             initial='',
-                             widget=forms.TextInput(),
-                             help_text="The CRITs Source name to associate"
-                                       " with this feed.")
+    source = forms.ChoiceField(required=True,
+                               label="CRITs Source",
+                               help_text="The CRITs Source name to associate"
+                                         " with this feed.")
 
     fcert = forms.CharField(required=False,
                             label="Encryption Certificate",
@@ -329,9 +336,29 @@ class TAXIIFeedConfigForm(forms.Form):
                             help_text="The end timestamp of the last full "
                             "poll. Future polls begin with this date/time.")
 
-    def __init__(self, *args, **kwargs):
+    def_conf = forms.ChoiceField(required=True,
+                                 label="Default Confidence",
+                                 help_text="Indicators with no Confidence "
+                                           "are assigned this value.")
+
+    def_impact = forms.ChoiceField(required=True,
+                                   label="Default Impact",
+                                   help_text="Indicators with no Impact "
+                                             "are assigned this value.")
+
+    def __init__(self, username, *args, **kwargs):
         kwargs.setdefault('label_suffix', ':')
         super(TAXIIFeedConfigForm, self).__init__(*args, **kwargs)
+
+        srcs = get_source_names(True, True, username)
+        self.fields['source'].choices = [(c.name, c.name) for c in srcs]
+        self.fields['source'].initial = get_user_organization(username)
+
+        ind_ci = IndicatorCI.values()
+        self.fields['def_conf'].choices = [(c, c.title()) for c in ind_ci]
+        self.fields['def_conf'].initial = 'unknown'
+        self.fields['def_impact'].choices = [(c, c.title()) for c in ind_ci]
+        self.fields['def_impact'].initial = 'unknown'
 
 
 class UploadStandardsForm(forms.Form):
@@ -341,16 +368,19 @@ class UploadStandardsForm(forms.Form):
 
     error_css_class = 'error'
     required_css_class = 'required'
-    filedata = forms.FileField()
+    filedata = forms.FileField(label="XML File or Zip of XML Files")
     source = forms.ChoiceField(required=True)
+    use_hdr_src = forms.BooleanField(required=False, initial=True,
+                        label="Use STIX Header Information Source, if possible")
     reference = forms.CharField(required=False)
+    import_all = forms.BooleanField(required=False, initial=False,
+                            label="Skip preview and import all data into CRITs")
     make_event = forms.BooleanField(required=False, label="Create event", initial=True)
 
     def __init__(self, username, *args, **kwargs):
         kwargs.setdefault('label_suffix', ':')
         super(UploadStandardsForm, self).__init__(*args, **kwargs)
-        self.fields['source'].choices = [(c.name,
-                                          c.name) for c in get_source_names(True,
-                                                                            True,
-                                                                            username)]
+
+        srcs = get_source_names(True, True, username)
+        self.fields['source'].choices = [(c.name, c.name) for c in srcs]
         self.fields['source'].initial = get_user_organization(username)

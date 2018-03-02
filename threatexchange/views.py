@@ -1,10 +1,8 @@
 import json
 
 from django.contrib.auth.decorators import user_passes_test
-from django.shortcuts import HttpResponse, render_to_response
+from django.shortcuts import HttpResponse, render
 from django.template.loader import render_to_string
-from django.template import RequestContext
-#from django.template.loader import render_to_string
 
 from pytx.vocabulary import ThreatExchange as tx
 
@@ -14,15 +12,11 @@ from . import forms
 
 @user_passes_test(user_can_view_data)
 def query(request):
-    return render_to_response('query.html',
-                              {'foo': "bar"},
-                              RequestContext(request))
+    return render(request, 'query.html', {'foo': "bar"})
 
 @user_passes_test(user_can_view_data)
 def privacy_groups(request):
-    return render_to_response('privacy_groups.html',
-                              {'foo': "bar"},
-                              RequestContext(request))
+    return render(request, 'privacy_groups.html', {'foo': "bar"})
 
 @user_passes_test(user_can_view_data)
 def submit_related_query(request):
@@ -35,6 +29,7 @@ def submit_related_query(request):
             'dropped_by': "Malware Analyses",
             'families': "Malware Families",
             'related': "Threat Indicators",
+            'similar_malware': "Malware Analyses",
             'threat_indicators': "Threat Indicators",
             'variants': "Malware Analyses"
         }
@@ -49,9 +44,7 @@ def submit_related_query(request):
                                  'message': "Need ID and valid related type."},
                                 content_type="application/json")
     else:
-        return render_to_response('error.html',
-                                  {'error': "Must be AJAX."},
-                                  RequestContext(request))
+        return render(request, 'error.html', {'error': "Must be AJAX."})
 
 @user_passes_test(user_can_view_data)
 def submit_query(request):
@@ -76,9 +69,7 @@ def submit_query(request):
         return HttpResponse(json.dumps(results),
                             content_type="application/json")
     else:
-        return render_to_response('error.html',
-                                  {'error': "Must be AJAX."},
-                                  RequestContext(request))
+        return render(request, 'error.html', {'error': "Must be AJAX."})
 
 @user_passes_test(user_can_view_data)
 def import_object(request):
@@ -92,9 +83,7 @@ def import_object(request):
         return HttpResponse(json.dumps(results),
                             content_type="application/json")
     else:
-        return render_to_response('error.html',
-                                  {'error': "Must be AJAX."},
-                                  RequestContext(request))
+        return render(request, 'error.html', {'error': "Must be AJAX."})
 
 @user_passes_test(user_can_view_data)
 def export_object(request):
@@ -109,9 +98,7 @@ def export_object(request):
         return HttpResponse(json.dumps(results),
                             content_type="application/json")
     else:
-        return render_to_response('error.html',
-                                  {'error': "Must be AJAX."},
-                                  RequestContext(request))
+        return render(request, 'error.html', {'error': "Must be AJAX."})
 
 @user_passes_test(user_can_view_data)
 def get_members(request):
@@ -120,9 +107,7 @@ def get_members(request):
         return HttpResponse(json.dumps(results),
                             content_type="application/json")
     else:
-        return render_to_response('error.html',
-                                  {'error': "Must be AJAX."},
-                                  RequestContext(request))
+        return render(request, 'error.html', {'error': "Must be AJAX."})
 
 @user_passes_test(user_can_view_data)
 def get_groups(request):
@@ -132,9 +117,7 @@ def get_groups(request):
         return HttpResponse(json.dumps(results),
                             content_type="application/json")
     else:
-        return render_to_response('error.html',
-                                  {'error': "Must be AJAX."},
-                                  RequestContext(request))
+        return render(request, 'error.html', {'error': "Must be AJAX."})
 
 @user_passes_test(user_can_view_data)
 def get_dropdowns(request):
@@ -143,9 +126,7 @@ def get_dropdowns(request):
         return HttpResponse(json.dumps(results),
                             content_type="application/json")
     else:
-        return render_to_response('error.html',
-                                  {'error': "Must be AJAX."},
-                                  RequestContext(request))
+        return render(request, 'error.html', {'error': "Must be AJAX."})
 
 
 @user_passes_test(user_can_view_data)
@@ -153,16 +134,13 @@ def get_privacy_group_form(request):
     if request.method == "POST" and request.is_ajax():
         initial = request.POST.copy()
         form = forms.ThreatExchangePrivacyGroupForm(initial=initial)
-        template = render_to_string("privacy_form.html",
-                                    {'privacy_group_form': form})
+        template = render_to_string("privacy_form.html", {'privacy_group_form': form}, request=request)
         result = {'success': True,
                 'html': template}
         return HttpResponse(json.dumps(result),
                             content_type="application/json")
     else:
-        return render_to_response('error.html',
-                                  {'error': "Must be AJAX."},
-                                  RequestContext(request))
+        return render(request, 'error.html', {'error': "Must be AJAX."})
 
 @user_passes_test(user_can_view_data)
 def add_edit_privacy_group(request):
@@ -186,6 +164,4 @@ def add_edit_privacy_group(request):
         return HttpResponse(json.dumps(results),
                             content_type="application/json")
     else:
-        return render_to_response('error.html',
-                                  {'error': "Must be AJAX."},
-                                  RequestContext(request))
+        return render(request, 'error.html', {'error': "Must be AJAX."})

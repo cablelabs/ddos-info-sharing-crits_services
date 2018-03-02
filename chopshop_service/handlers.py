@@ -8,7 +8,10 @@ import hashlib
 import json
 from base64 import b64decode
 
-from django.core.urlresolvers import reverse
+try:
+    from django.urls import reverse
+except ImportError:
+    from django.core.urlresolvers import reverse
 
 from crits.pcaps.pcap import PCAP
 from crits.samples.handlers import handle_file
@@ -20,6 +23,8 @@ import crits.services
 def chopshop_carver(pcap_md5, options, analyst):
     # Make sure we can find ChopShop
     sc = get_config('ChopShop')
+    user = get_user_info(analyst)
+
     if not sc:
         return {'success': False, 'message': 'Could not find ChopShop service.'}
 
@@ -120,10 +125,10 @@ def chopshop_carver(pcap_md5, options, analyst):
 
     # Grab any carved HTTP bodies.
     for (md5_digest, (name, blob)) in chopui.jsonclass.http_files.items():
-        if handle_file(name, blob, source, related_md5=pcap_md5, user=analyst, method='ChopShop Filecarver', md5_digest=md5_digest, related_type='PCAP'):
+        if user.has_access_to(SampleACL.WRITE) and handle_file(name, blob, source, related_md5=pcap_md5, user=user, source_method='ChopShop Filecarver', md5_digest=md5_digest, related_type='PCAP'):
             # Specifically not using name here as I don't want to deal
             # with sanitizing it
-            message += "Saved HTTP body: <a href=\"%s\">%s</a><br />" % (reverse('crits.samples.views.detail', args=[md5_digest]), md5_digest)
+            message += "Saved HTTP body: <a href=\"%s\">%s</a><br />" % (reverse('crits-samples-views-detail', args=[md5_digest]), md5_digest)
         else:
             message += "Failed to save file %s." % md5_digest
 
@@ -136,16 +141,19 @@ def chopshop_carver(pcap_md5, options, analyst):
             message += ret['reason']
             continue
 
-        message += "Saved email: <a href=\"%s\">%s</a><br />%i attachment(s)<br />" % (reverse('crits.emails.views.email_detail', args=[ret['object'].id]), ret['object'].id, len(ret['attachments'].keys()))
+        message += "Saved email: <a href=\"%s\">%s</a><br />%i attachment(s)<br />" % (reverse('crits-emails-views-email_detail', args=[ret['object'].id]), ret['object'].id, len(ret['attachments'].keys()))
 
         for md5_digest in ret['attachments'].keys():
-            message += "<a href=\"%s\">%s</a><br />" % (reverse('crits.samples.views.detail', args=[md5_digest]), md5_digest)
+            message += "<a href=\"%s\">%s</a><br />" % (reverse('crits-samples-views-detail', args=[md5_digest]), md5_digest)
 
     # Handle raw returns.
     for id_, blob in chopui.jsonclass.raw_returns.items():
-        md5_digest = handle_file(id_, blob, source, related_md5=pcap_md5, user=analyst, method='ChopShop Filecarver', related_type='PCAP')
+        if user.has_access_to(SampleACL.WRITE):
+            md5_digest = handle_file(id_, blob, source, related_md5=pcap_md5, user=user, source_method='ChopShop Filecarver', related_type='PCAP')
+        else:
+            md5_digest = None
         if md5_digest:
-            message += "Saved raw %s: <a href=\"%s\">%s</a><br />" % (id_, reverse('crits.samples.views.detail', args=[md5_digest]), md5_digest)
+            message += "Saved raw %s: <a href=\"%s\">%s</a><br />" % (id_, reverse('crits-samples-views-detail', args=[md5_digest]), md5_digest)
         else:
             message += "Failed to save raw %s." % md5_digest
 
