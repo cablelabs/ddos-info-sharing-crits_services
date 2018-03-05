@@ -64,7 +64,7 @@ class SpawnProcessesThread(Thread):
             # Wait for previous set of processes to finish so we don't analyze any one IP with multiple processes.
             last_process_completed = False
             while True:
-                self.debug_message("Still waiting")
+                #self.debug_message("Still waiting")
                 if not self.shutdown_queue.empty():
                     self.debug_message("Shutdown signal received while waiting for message from remover thread.")
                     return

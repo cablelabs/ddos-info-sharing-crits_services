@@ -50,9 +50,9 @@ class RemoveCompletedProcessesThread(Thread):
                 front_process.terminate()
                 #self.debug_message("Process terminated.")
                 front_process.join()
-                self.debug_message("Process joined.")
+                #self.debug_message("Process joined.")
             self.bounded_semaphore.release()
-            self.debug_message("Semaphore released.")
+            #self.debug_message("Semaphore released.")
 
     def debug_message(self, message):
         if self.debug:

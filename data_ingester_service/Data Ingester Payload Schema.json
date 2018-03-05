@@ -7,17 +7,21 @@
             "description": "The name of the organization of the user submitting data.",
             "type": "string"
         },
+        "sessionKey": {
+            "description": "A key indicating what session this submission is part of.",
+            "type": "string"
+        },
         "ingestData": {
             "description": "A list of one or more objects describing DDoS attacks from individial IP addresses.",
             "type": "array",
-            "items": { "$ref": "#/definitions/ingestData" },
+            "items": { "$ref": "#/definitions/ingestDataItem" },
             "minItems": 1,
             "uniqueItems": true
         }
     },
     "required": [ "ProviderName", "ingestData" ],
     "definitions": {
-        "ingestData": {
+        "ingestDataItem": {
             "description": "An object with information about a DDoS attack event from a single IP address.",
             "type": "object",
             "properties": {

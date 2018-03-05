@@ -249,7 +249,7 @@ $(document).ready(function() {
     $(document).on('click', '#start_associating', function(e) {
         $.ajax({
             type: "POST",
-            url: "{% url 'source_associater_service.views.associate_ips_to_sources' %}",
+            url: "{% url 'source_associater_service-views-associate_ips_to_sources' %}",
             data: {},
             success: function(data) {
                 toggle_loader();
@@ -263,7 +263,7 @@ $(document).ready(function() {
 function get_source_names() {
         $.ajax({
             type: "GET",
-            url: "{% url 'source_associater_service.views.get_all_source_names' %}",
+            url: "{% url 'source_associater_service-views-get_all_source_names' %}",
             data: {},
             success: add_source_names_to_dropdown
         });
@@ -285,7 +285,7 @@ function start_processing() {
     var source_name = source_select.options[ source_select.selectedIndex ].value;
     $.ajax({
         type: "POST",
-        url: "{% url 'source_associater_service.views.associate_ips_to_sources' %}",
+        url: "{% url 'source_associater_service-views-associate_ips_to_sources' %}",
         data: {'source_name': source_name},
         success: function(data) {
             toggle_loader();

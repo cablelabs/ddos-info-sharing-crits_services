@@ -11,6 +11,7 @@ os.environ['DJANGO_SETTINGS_MODULE'] = 'crits.settings'
 from crits.core.crits_mongoengine import create_embedded_source
 from crits.core.handlers import add_releasability, add_releasability_instance
 from crits.core.source_access import SourceAccess
+from crits.core.user import CRITsUser
 from crits.core.user_tools import get_user_organization
 from crits.events.event import Event
 from crits.events.handlers import add_new_event
@@ -48,7 +49,7 @@ def process_aggregate_entry(aggregate_entry, performance_log_file_lock=None):
 
 
 def save_data_to_crits(aggregate_entry, performance_log_file_lock):
-    debug = False
+    debug = True
     # TODO: Try to determine more specifically where steps may have terminated, not just checking for duplicate event.
     last_time_received = None
     ip_address = aggregate_entry.get('_id', '')
@@ -58,6 +59,7 @@ def save_data_to_crits(aggregate_entry, performance_log_file_lock):
     debug_message(debug, "save_data_to_crits(): Iterating over events for IP '" + ip_address + "'.")
     for event in aggregate_entry['events']:
         analyst = event.get('analyst')
+        user = CRITsUser.objects(username=analyst).first()
         time_received = event.get('timeReceived')
         # Look for potential duplicate Event in current database.
         # for db_event in aggregate_event_data(username=analyst):
@@ -96,17 +98,18 @@ def save_data_to_crits(aggregate_entry, performance_log_file_lock):
             add_event_result = add_new_event(title=title,
                                              description='',
                                              event_type=EventTypes.DISTRIBUTED_DENIAL_OF_SERVICE,
-                                             source=source,
-                                             method='',
-                                             reference='',
+                                             source_name=source,
+                                             source_method='',
+                                             source_reference='',
+                                             source_tlp='amber',
                                              date=time_received,
-                                             analyst=analyst
+                                             user=user
                                              )
             duration = start_time.diff(pendulum.now('UTC'))
             log_performance_data(performance_log_file_lock, 'Add new Event', duration)
             debug_message(debug, "save_data_to_crits(): New event added.")
         except Exception as e:
-            debug_message(debug, "save_data_to_crits(): Exception adding event.")
+            debug_message(debug, "save_data_to_crits(): Exception adding event: " + e.message)
             break
         if last_time_received is None:
             last_time_received = time_received
@@ -153,7 +156,8 @@ def save_data_to_crits(aggregate_entry, performance_log_file_lock):
         update_ip_result = ip_add_update(ip_address=ip_address,
                                          ip_type=ip_type,
                                          source=source,
-                                         analyst=analyst,
+                                         source_tlp='amber',
+                                         user=user,
                                          related_id=event_id,
                                          related_type='Event',
                                          relationship_type=RelationshipTypes.RELATED_TO
@@ -194,7 +198,7 @@ def update_ip_object_additional_fields(ip_address, performance_log_file_lock):
     :type ip_address: str
     :return: (nothing)
     """
-    debug = False
+    debug = True
     autofill_analyst = 'analysis_autofill'
 
     # Get IP object to update

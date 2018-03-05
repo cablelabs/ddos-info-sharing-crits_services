@@ -1,18 +1,18 @@
 import json
 
 from django.contrib.auth.decorators import user_passes_test
-from django.shortcuts import HttpResponse, render_to_response
+from django.shortcuts import HttpResponse, render
 from django.template import RequestContext
 from crits.core.user_tools import user_can_view_data
 
-import handlers
+from . import handlers
 
 
 @user_passes_test(user_can_view_data)
 def source_associater_screen(request):
-    return render_to_response('source_associater_screen.html',
-                              {},
-                              RequestContext(request))
+    return render(request,
+                  'source_associater_screen.html',
+                  {})
 
 
 @user_passes_test(user_can_view_data)
@@ -26,9 +26,9 @@ def get_all_source_names(request):
         }
         return HttpResponse(json.dumps(output),
                             content_type="application/json")
-    return render_to_response('error.html',
-                              {'error': "Must be GET and AJAX."},
-                              RequestContext(request))
+    return render(request,
+                  'error.html',
+                  {'error': "Must be GET and AJAX."})
 
 
 @user_passes_test(user_can_view_data)
@@ -47,6 +47,7 @@ def associate_ips_to_sources(request):
         }
         return HttpResponse(json.dumps(output),
                             content_type="application/json")
-    return render_to_response('error.html',
-                              {'error': "Must be POST and AJAX."},
-                              RequestContext(request))
+    return render(request,
+                  'error.html',
+                  {'error': "Must be POST and AJAX."}
+                  )
